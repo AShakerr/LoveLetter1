@@ -11,47 +11,55 @@
 instruments:
   # ---- held (positions confirmed in phase 2) ---------------------------------------------
   - {ticker: TSLA, name: Tesla Inc, kind: stock, currency: USD, exchange: NASDAQ, tradable: true,
-     theme: "EV / autonomy", sector: Consumer Discretionary, region: USA, news_sentiment: true}
+     theme: ev_auto, sector: Consumer Discretionary, region: USA, news_sentiment: true}
   - {ticker: VUSA, name: Vanguard S&P 500 UCITS ETF Dist, isin: IE00B3XXRP09, kind: etf, currency: EUR,
-     exchange: Xetra, tradable: true, theme: "diversified core", sector: Broad, region: USA,
+     exchange: Xetra, tradable: true, theme: us_broad, sector: Broad, region: USA,
      source_symbol: VUSA.DE, valuation: {target_key: "S&P 500 Dec-26", index_ticker: "^GSPC", pe_series: "PE:S&P 500"}}
   # Identifiers from docs/seed/positions_2026-09-04.json. X9I1's ISIN still needs confirming in Revolut.
   - {ticker: X9I1, name: Amundi MSCI Emerging Markets Swap UCITS ETF USD Acc, isin: LU1681045453, kind: etf,
-     currency: EUR, exchange: Xetra, tradable: true, theme: "emerging markets", sector: Broad,
+     currency: EUR, exchange: Xetra, tradable: true, theme: em_broad, sector: Broad,
      region: Emerging Markets, source_symbol: X9I1.DE,
      valuation: {target_key: "MSCI EM Dec-26", pe_series: "PE:MSCI Emerging Markets"}}
   - {ticker: 4COP, name: Global X Copper Miners UCITS ETF USD Acc, isin: IE0003Z9E2Y3, kind: etf, currency: EUR,
-     exchange: Xetra, tradable: true, theme: "copper / electrification", sector: Materials, region: Global,
+     exchange: Xetra, tradable: true, theme: materials_copper, sector: Materials, region: Global,
      source_symbol: 4COP.DE}
   - {ticker: SPCX, name: SpaceX (Revolut private-company tracker), kind: private, currency: USD, exchange: null,
-     tradable: true, theme: "space / private", sector: Industrials, region: USA, price_source: none}
+     tradable: true, theme: private_space, sector: Industrials, region: USA, price_source: none}
   - {ticker: COMMODITIES_POT, name: Revolut commodities pot (composition to confirm), kind: commodity,
      currency: USD, exchange: null, tradable: true, theme: gold, sector: Commodities, region: Global,
      price_source: none, composition_confirmed: false,
      valuation: {target_key: "Gold Dec-26", index_ticker: "GC=F"}}
   - {ticker: ROBO_ADVISOR, name: Revolut Robo-Advisor, kind: other, currency: USD, tradable: true,
-     theme: "diversified core", sector: Broad, region: Global, price_source: none}
+     theme: us_broad, sector: Broad, region: Global, price_source: none}
   - {ticker: UNKNOWN_BROKERAGE, name: "Brokerage lines behind 'Show more' (identify)", kind: other, currency: USD,
      tradable: false, theme: "unknown (confirm)", price_source: none}
   - {ticker: CASH_USD, name: USD cash (brokerage), kind: cash, currency: USD, tradable: false, theme: cash,
      price_source: none}
   # ---- watchlist ---------------------------------------------------------------------------
+  # The two BUY candidates named in docs/seed/kill_conditions_2026-09-04.yaml (EU_BROAD_ETF, INDUSTRIALS_ETF).
+  # Concrete lines to confirm on Revolut; the kill conditions attach by theme.
+  - {ticker: EXW1, name: iShares Core EURO STOXX 50 UCITS ETF EUR Dist, isin: IE0008471009, kind: etf, currency: EUR,
+     exchange: Xetra, tradable: true, theme: eu_broad, sector: Broad, region: Euro area, source_symbol: EXW1.DE,
+     valuation: {target_key: "Euro Stoxx 50 Dec-26", index_ticker: "^STOXX50E", pe_series: "PE:DJ Euro Stoxx 50"}}
+  - {ticker: ZPDI, name: SPDR S&P U.S. Industrials Select Sector UCITS ETF, isin: IE00BWBXM815, kind: etf, currency: EUR,
+     exchange: Xetra, tradable: true, theme: industrials, sector: Industrials, region: USA, source_symbol: ZPDI.DE,
+     valuation: {target_key: "S&P 500 Dec-26", index_ticker: "^GSPC", pe_series: "PE:S&P 500"}}
   - {ticker: NVDA, name: NVIDIA Corp, kind: stock, currency: USD, exchange: NASDAQ, tradable: true,
-     theme: "AI capex", sector: Information Technology, region: USA, news_sentiment: true}
+     theme: ai_capex, sector: Information Technology, region: USA, news_sentiment: true}
   - {ticker: VWCE, name: Vanguard FTSE All-World UCITS ETF (acc, EUR), kind: etf, currency: EUR,
-     exchange: Xetra, tradable: true, theme: "diversified core", sector: Broad, region: Global,
+     exchange: Xetra, tradable: true, theme: us_broad, sector: Broad, region: Global,
      source_symbol: VWCE.DE, valuation: {target_key: "MSCI World Dec-26", pe_series: "PE:S&P 500"}}
   # ---- benchmarks, futures, fx, crypto reference (not tradable as such) --------------------
-  - {ticker: "^GSPC", name: S&P 500, kind: index, currency: USD, tradable: false, region: USA}
-  - {ticker: "^NDX", name: Nasdaq 100, kind: index, currency: USD, tradable: false, region: USA}
-  - {ticker: "^GDAXI", name: DAX, kind: index, currency: EUR, tradable: false, region: Germany}
-  - {ticker: "^STOXX50E", name: Euro Stoxx 50, kind: index, currency: EUR, tradable: false, region: Euro area}
+  - {ticker: "^GSPC", name: S&P 500, kind: index, currency: USD, tradable: false, region: USA, theme: us_broad}
+  - {ticker: "^NDX", name: Nasdaq 100, kind: index, currency: USD, tradable: false, region: USA, theme: ai_capex}
+  - {ticker: "^GDAXI", name: DAX, kind: index, currency: EUR, tradable: false, region: Germany, theme: eu_broad}
+  - {ticker: "^STOXX50E", name: Euro Stoxx 50, kind: index, currency: EUR, tradable: false, region: Euro area, theme: eu_broad}
   - {ticker: "^VIX", name: CBOE VIX, kind: index, currency: USD, tradable: false, region: USA}
   - {ticker: DXY, name: US Dollar Index, kind: index, currency: USD, tradable: false, source_symbol: DX-Y.NYB}
   - {ticker: "GC=F", name: Gold futures, kind: commodity, currency: USD, tradable: false, theme: gold}
   - {ticker: "CL=F", name: WTI crude futures, kind: commodity, currency: USD, tradable: false, theme: energy}
   - {ticker: "BZ=F", name: Brent crude futures, kind: commodity, currency: USD, tradable: false, theme: energy}
-  - {ticker: "HG=F", name: Copper futures, kind: commodity, currency: USD, tradable: false, theme: "copper / electrification"}
+  - {ticker: "HG=F", name: Copper futures, kind: commodity, currency: USD, tradable: false, theme: materials_copper}
   - {ticker: "SI=F", name: Silver futures, kind: commodity, currency: USD, tradable: false, theme: gold}
   - {ticker: BTC-USD, name: Bitcoin, kind: crypto, currency: USD, tradable: false, theme: crypto}
   - {ticker: ETH-USD, name: Ethereum, kind: crypto, currency: USD, tradable: false, theme: crypto}

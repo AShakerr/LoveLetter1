@@ -132,8 +132,12 @@ class Position(SQLModel, table=True):
     note: str | None = None
     # phase 3: per-position overrides and thesis
     stop_pct: float | None = None
-    kill_condition: str | None = None
-    kill_predicate: str | None = None
+    kill_condition: str | None = None  # the thesis, free text
+    kill_predicate: str | None = None  # first mandatory predicate (legacy single-predicate form)
+    # full form from docs/seed/kill_conditions_*.yaml:
+    # {"thesis": str, "kills": [{"predicate"|"human": str, "severity": "mandatory"|"review", "note": str}],
+    #  "add_blocked_while": str|None, "pre_condition": str|None, "theme": str|None}
+    kill_json: dict | None = Field(default=None, sa_column=Column(JSON))
     closed_at: dt.datetime | None = None
 
 

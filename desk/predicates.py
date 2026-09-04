@@ -2,14 +2,16 @@
 
 A predicate is a small Python-syntax expression evaluated over a whitelisted AST. Functions available:
 
-    house_view(key)          -> object with .stance / .value / .date; key may be a literal ('Energy'),
-                                or one of the position's own attributes: sector, region, theme
-    observation(series)      -> latest value of an observation series (DGS10, ECB_DEPO, DXY ...); falls back
+    house_view(scope, key)   -> object with .stance / .value / .date, e.g. house_view('sector', 'Materials');
+    house_view(key)             the one-argument form takes a literal key or one of the position's own
+                                attributes: sector, region, theme
+    observation(series)      -> latest value of an observation series (DGS30, ECB_DEPO, DXY ...); falls back
                                 to the latest close of an instrument with that ticker (BZ=F, GC=F ...)
     close(ticker=None)       -> latest close (default: the position's instrument)
-    change_pct(series, days) -> % change of a series/ticker over N calendar days
-    theme_weight(theme)      -> current portfolio weight of a theme, as a fraction
-    days_since(date)         -> days since 'YYYY-MM-DD'
+    change_pct(ticker, days) -> % change of the close over N trading days (observation series: N rows)
+    theme_weight(theme)      -> current portfolio weight of a theme, in percent (35 means 35%)
+    days_since(series)       -> age in days of the latest observation/close of a series or ticker;
+                                a 'YYYY-MM-DD' literal gives days since that date
     avg_cost(ticker=None)    -> the position's average cost
     sentiment(ticker=None, days=14) -> mean news sentiment over the window
 
@@ -115,10 +117,21 @@ class Context:
         ).first()
 
     # -- DSL functions ------------------------------------------------------------------------
-    def house_view(self, key: str) -> ViewResult:
-        attr = {"sector": "sector", "region": "region", "theme": "theme", "ticker": "ticker"}.get(
-            key
-        )
+    def house_view(self, scope_or_key: str, key: str | None = None) -> ViewResult:
+        """house_view('sector', 'Materials') or house_view('Materials') or house_view(sector)."""
+        scope: str | None = None
+        if key is not None:
+            scope, key = scope_or_key, key
+        else:
+            key = scope_or_key
+        attr = None
+        if scope is None:
+            attr = {
+                "sector": "sector",
+                "region": "region",
+                "theme": "theme",
+                "ticker": "ticker",
+            }.get(key)
         if attr:
             if self.instrument is None:
                 raise PredicateError(f"house_view({key}) needs an instrument in context")
@@ -128,9 +141,11 @@ class Context:
         for row in all_views(self.session):
             if row.tactical:
                 continue
-            if row.view.key == key:
+            if row.view.key == key and (scope is None or row.view.scope == scope):
                 return ViewResult(row.view.stance, _num(row.view.value), row.report.date, key)
-        raise PredicateError(f"no house view for {key!r}")
+        raise PredicateError(
+            f"no house view for {key!r}" + (f" in scope {scope!r}" if scope else "")
+        )
 
     def observation(self, series: str) -> float:
         obs = self.session.exec(
@@ -150,43 +165,55 @@ class Context:
         return self._latest_price(ticker).close
 
     def change_pct(self, series: str, days: float) -> float:
+        """% change over N trading days: the latest close versus the close N rows earlier."""
+        n = int(days)
         inst = self.session.exec(select(Instrument).where(Instrument.ticker == series)).first()
         if inst is not None:
-            now = self._latest_price(series)
-            past = self._price_at(series, now.date - dt.timedelta(days=int(days)))
-            if past is None or past.close == 0:
-                raise PredicateError(f"not enough price history for {series} over {days} days")
-            return (now.close / past.close - 1) * 100
-        now_obs = self.session.exec(
+            rows = self.session.exec(
+                select(Price)
+                .where(Price.instrument_id == inst.id)
+                .order_by(Price.date.desc())
+                .limit(n + 1)
+            ).all()
+            if len(rows) < n + 1 or not rows[-1].close:
+                raise PredicateError(
+                    f"not enough price history for {series} ({len(rows)} rows, need {n + 1})"
+                )
+            return (rows[0].close / rows[-1].close - 1) * 100
+        rows = self.session.exec(
+            select(Observation)
+            .where(Observation.series == series)
+            .order_by(Observation.date.desc())
+            .limit(n + 1)
+        ).all()
+        if not rows:
+            raise PredicateError(f"no series {series!r}")
+        if len(rows) < n + 1 or not rows[-1].value:
+            raise PredicateError(
+                f"not enough history for {series} ({len(rows)} rows, need {n + 1})"
+            )
+        return (rows[0].value / rows[-1].value - 1) * 100
+
+    def theme_weight(self, theme: str) -> float:
+        return float(self.theme_weights.get(theme, 0.0)) * 100
+
+    def days_since(self, series: str) -> int:
+        try:
+            return (self.today - dt.date.fromisoformat(str(series))).days
+        except ValueError:
+            pass
+        obs = self.session.exec(
             select(Observation)
             .where(Observation.series == series)
             .order_by(Observation.date.desc())
             .limit(1)
         ).first()
-        if now_obs is None:
-            raise PredicateError(f"no series {series!r}")
-        past_obs = self.session.exec(
-            select(Observation)
-            .where(
-                Observation.series == series,
-                Observation.date <= now_obs.date - dt.timedelta(days=int(days)),
-            )
-            .order_by(Observation.date.desc())
-            .limit(1)
-        ).first()
-        if past_obs is None or past_obs.value == 0:
-            raise PredicateError(f"not enough history for {series} over {days} days")
-        return (now_obs.value / past_obs.value - 1) * 100
-
-    def theme_weight(self, theme: str) -> float:
-        return float(self.theme_weights.get(theme, 0.0))
-
-    def days_since(self, date: str) -> int:
-        try:
-            d = dt.date.fromisoformat(str(date))
-        except ValueError as exc:
-            raise PredicateError(f"bad date {date!r}") from exc
-        return (self.today - d).days
+        if obs is not None:
+            return (self.today - obs.date).days
+        inst = self.session.exec(select(Instrument).where(Instrument.ticker == series)).first()
+        if inst is not None:
+            return (self.today - self._latest_price(series).date).days
+        raise PredicateError(f"no series, ticker or date {series!r}")
 
     def avg_cost(self, ticker: str | None = None) -> float:
         if ticker is None or (self.instrument is not None and ticker == self.instrument.ticker):

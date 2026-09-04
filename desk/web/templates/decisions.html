@@ -40,7 +40,7 @@
         <td class="mono">{% if rj.score is not none %}{{ '%.0f' % rj.score }} <span class="pill band-{{ rj.band }}">{{ rj.band }}</span>{% if rj.provisional %}<span class="pill cached" title="regime_fit.yaml missing">prov.</span>{% endif %}{% endif %}</td>
         <td>{% for f in mand %}<span class="pill mandatory" title="{{ f.summary }}">{{ f.rule }}</span> {% endfor %}
             {% for f in rev %}<span class="pill review" title="{{ f.summary }}">{{ f.rule }}</span> {% endfor %}</td>
-        <td class="small muted">{{ (rj.kill_condition or '') | truncate(80) }}{% if rj.kill_predicate %}<br><code>{{ rj.kill_predicate | truncate(60) }}</code>{% endif %}</td>
+        <td class="small muted">{{ (rj.kill_condition or '') | truncate(90) }}{% if rj.kill_json and rj.kill_json.kills %}<br><span class="pill">{{ rj.kill_json.kills | length }} trigger{{ 's' if rj.kill_json.kills | length != 1 }}</span>{% endif %}</td>
         <td><span class="pill status-{{ d.user_status }}">{{ d.user_status }}</span></td>
         <td><a href="/decisions/{{ d.id }}" class="small">open →</a></td>
       </tr>

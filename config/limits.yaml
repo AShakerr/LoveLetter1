@@ -4,6 +4,8 @@ max_single_theme: 0.35
 max_illiquid_private: 0.15
 min_diversified_core_target: 0.40
 min_diversified_core_warn: 0.25
+# themes that count as diversified core (broad index ETFs)
+core_themes: [us_broad, eu_broad, em_broad]
 max_crypto: 0.05
 # Rules engine defaults (section 8)
 stop_loss:

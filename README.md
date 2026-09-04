@@ -9,7 +9,7 @@ It does not trade and it is not investment advice.
 |---|---|---|
 | 1 | Skeleton, all fetchers with recorded fixtures, daily scheduler, tape dashboard | **done** |
 | 2 | Safra PDF extraction, seed house views, Revolut screenshot ingestion, portfolio view | **done** |
-| 3 | Regime, conviction score, rules engine, decisions, paper broker | **done** (f_regime waits for `config/regime_fit.yaml`) |
+| 3 | Regime, conviction score, rules engine, decisions, paper broker | **done** |
 | 4 | Self-scoring, weekly digest, Claude-written reasoning | not started |
 
 ## Run locally
@@ -95,12 +95,20 @@ thesis_unevaluable) rules, and decisions are written append-only with a markdown
 score table, rules fired, kill condition, and what would reverse it. Marking a decision executed on its
 page updates the confirmed positions; the decision text is never edited.
 
-- `config/regime_fit.yaml` (user-supplied) drives f_regime = 0.6 x fit(current) + 0.4 x fit(reverse).
-  Until it exists, scores are marked provisional and f_regime contributes 0.
-- `docs/seed/kill_conditions_<date>.yaml` (user-supplied) attaches a thesis and a predicate to positions and
-  to BUY decisions for named candidates. The predicate DSL is documented in `desk/predicates.py`
-  (house_view, observation, close, change_pct, theme_weight, days_since, avg_cost, sentiment). A predicate
-  the DSL cannot evaluate becomes a REVIEW flag showing the thesis text.
+- `config/regime_fit.yaml` drives f_regime = 0.6 x fit(current) + 0.4 x fit(reverse scenario), where fit is
+  the mean of the four dimension scores for the instrument's theme. Instrument themes in
+  `config/universe.yaml` use the same slugs as that table (us_broad, eu_broad, em_broad, industrials,
+  ai_capex, materials_copper, gold, energy, ev_auto, private_space, crypto ...). If the file is missing,
+  scores are marked provisional and f_regime contributes 0.
+- `docs/seed/kill_conditions_<date>.yaml` attaches a thesis and a list of kill triggers to each position
+  (`desk seed` or `desk kill-conditions`), and to BUY decisions for the named candidates (matched by ticker
+  or theme; EXW1 and ZPDI are the concrete lines for EU_BROAD_ETF and INDUSTRIALS_ETF). Each trigger is a
+  predicate in the DSL of `desk/predicates.py` with its own severity, or a `human:` check the DSL cannot
+  evaluate. Rules: mandatory predicate true -> MANDATORY SELL; review predicate true -> REVIEW; human ->
+  REVIEW every day; unevaluable -> REVIEW with the thesis text. `add_blocked_while` blocks ADD decisions.
+  DSL: `house_view(scope, key).stance/.value`, `observation(series)`, `close(ticker)`,
+  `change_pct(ticker, trading_days)`, `theme_weight(theme)` in percent, `days_since(series|date)`,
+  `avg_cost(ticker)`, `sentiment(ticker, days)`.
 - A pot with `composition_confirmed: false` (the Revolut commodities pot) turns max_position / max_theme
   into a REVIEW flag "confirm pot composition"; the Portfolio page has the confirm button, after which the
   TRIM is mandatory.

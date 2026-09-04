@@ -67,9 +67,24 @@ def test_predicate_dsl(seeded):
         assert evaluate("observation('ECB_DEPO') >= 2.25", ctx) is True
         assert evaluate("close() < avg_cost() * 0.5", ctx) is False
         assert evaluate("close('TSLA') > 0", ctx) is True
-        assert evaluate("theme_weight(gold) > 0.35", ctx) is True
+        assert evaluate("theme_weight(gold) > 35", ctx) is True
+        assert evaluate("theme_weight('private_space') > 15", ctx) is False
         assert evaluate("days_since('2026-06-11') > 30", ctx) is True
+        assert evaluate("days_since('EZ_HICP') > 30", ctx) is True  # monthly series dated 1 July
+        assert evaluate("days_since('BZ=F') <= 1", ctx) is True
         assert evaluate("not (change_pct('GC=F', 60) < -50)", ctx) is True
+        assert evaluate("house_view('sector', 'Materials').stance == 'most_preferred'", ctx) is True
+        assert evaluate("house_view('commodity', 'Gold Dec-26').value < 4470", ctx) is False
+        assert (
+            evaluate("house_view('region', 'Emerging Markets').stance != 'least_preferred'", ctx)
+            is True
+        )
+        assert evaluate("close('TSLA') < 0.82 * avg_cost('TSLA')", ctx) is False
+        assert evaluate("observation('DGS30') > 5.50", ctx) is False
+        with pytest.raises(PredicateError):
+            evaluate("change_pct('SPCX', 60) < -25", ctx)  # no price history for the private line
+        with pytest.raises(PredicateError):
+            evaluate("house_view('region', 'Materials').stance == neutral", ctx)  # wrong scope
         assert evaluate("sentiment('TSLA', 14) > -1", ctx) is True
         assert evaluate("house_view('S&P 500 Dec-26').value >= 8200", ctx) is True
         for bad in (
@@ -86,6 +101,29 @@ def test_predicate_dsl(seeded):
         ):
             with pytest.raises(PredicateError):
                 evaluate(bad, ctx)
+
+
+def test_regime_fit_from_config(settings):
+    fit = RegimeFit.load(settings.config_dir / "regime_fit.yaml")
+    assert fit is not None and fit.reverse_scenario == {
+        "inflation_state": "contained",
+        "policy_state": "on_hold",
+        "oil_state": "normal",
+        "vol_state": "normal",
+    }
+    regime = Regime(
+        date=TODAY,
+        label="x",
+        inflation_state="energy_shock",
+        policy_state="hiking",
+        oil_state="shock",
+        vol_state="complacent",
+    )
+    v, inputs = fit.score("energy", regime)
+    assert v == pytest.approx(0.6 * (5 + 3 + 5 + 3) / 4 + 0.4 * (1 + 3 + 1 + 3) / 4)
+    v_gold, _ = fit.score("gold", regime)
+    assert v_gold == pytest.approx(0.6 * (3 + 1 + 3 + 2) / 4 + 0.4 * (2 + 3 + 2 + 3) / 4)
+    assert fit.score("cash", regime)[0] is None
 
 
 def test_regime_fit_loader(tmp_path: Path):
@@ -126,8 +164,10 @@ def test_scores(seeded):
             for r in score_universe(s, view, regime, settings=seeded, today=TODAY)
         }
         tsla, nvda, vusa, pot = (_inst(s, t) for t in ("TSLA", "NVDA", "VUSA", "COMMODITIES_POT"))
-        assert results[tsla.id].provisional  # no regime_fit.yaml in the repo yet
-        assert results[tsla.id].factors["regime"].value is None
+        assert not results[tsla.id].provisional
+        assert results[tsla.id].factors["regime"].value is not None
+        assert results[tsla.id].factors["regime"].inputs["formula"] == "0.6*current + 0.4*reverse"
+        assert all(0 <= r.row.total <= 100 for r in results.values())
         # sector Consumer Discretionary neutral (2.5), region USA most preferred (5), Equities overweight (5)
         assert results[tsla.id].factors["safra"].value == pytest.approx((2.5 + 5 + 5) / 3)
         assert results[nvda.id].factors["safra"].value == 5.0  # focus-list buy overrides
@@ -139,7 +179,6 @@ def test_scores(seeded):
         assert results[pot.id].factors["portfolio"].value <= 1.0  # gold already 62%
         assert results[vusa.id].factors["portfolio"].inputs["base"] == 5.0
         assert all(r.factors["season"].value == 0 for r in results.values())  # September
-        assert all(0 <= r.row.total <= 80 for r in results.values())
         assert len(s.exec(select(Score).where(Score.date == TODAY)).all()) == len(results)
         # second run upserts, no duplicates
         score_universe(s, view, regime, settings=seeded, today=TODAY)
@@ -194,6 +233,10 @@ def test_rules_composition_and_mandatory(seeded):
         )
         mt = [f for f in flags if f.rule == "max_theme" and f.instrument_id == pot.id][0]
         assert mt.severity == "mandatory" and mt.action == "TRIM"
+        pot_thesis = [
+            f for f in flags if f.rule == "thesis_invalidated" and f.instrument_id == pot.id
+        ][0]
+        assert pot_thesis.severity == "mandatory" and pot_thesis.action == "SELL"
 
 
 def test_rules_stop_loss_and_thesis(seeded):
@@ -203,16 +246,29 @@ def test_rules_stop_loss_and_thesis(seeded):
         pos.avg_cost = 1000.0  # price ~352 -> far below an 18% stop
         pos.kill_condition = "Thesis: Safra keeps Consumer Discretionary at least neutral"
         pos.kill_predicate = "house_view(sector).stance == least_preferred"
+        pos.kill_json = None
         s.add(pos)
         vusa = _inst(s, "VUSA")
         vpos = s.exec(select(Position).where(Position.instrument_id == vusa.id)).one()
         vpos.kill_condition = "Thesis text that the DSL cannot check"
         vpos.kill_predicate = "observation('NOT_A_SERIES') < 1"
+        vpos.kill_json = None
         s.add(vpos)
         x9 = _inst(s, "X9I1")
         xpos = s.exec(select(Position).where(Position.instrument_id == x9.id)).one()
-        xpos.kill_predicate = "observation('EZ_HICP') > 1"  # true -> thesis invalidated
         xpos.kill_condition = "EM thesis dies if EZ inflation stays above 1%"
+        xpos.kill_json = {
+            "thesis": xpos.kill_condition,
+            "kills": [
+                {
+                    "predicate": "observation('EZ_HICP') > 1",
+                    "severity": "mandatory",
+                    "note": "true today",
+                },
+                {"predicate": "observation('DXY') > 90", "severity": "review", "note": "also true"},
+                {"human": "Check the fund's swap counterparty", "severity": "review"},
+            ],
+        }
         s.add(xpos)
         s.commit()
         view = build_portfolio(s, seeded)
@@ -231,11 +287,23 @@ def test_rules_stop_loss_and_thesis(seeded):
         )
         assert sl[0].detail["stop_pct"] == 0.18
         assert not any(f.rule == "thesis_invalidated" and f.instrument_id == tsla.id for f in flags)
-        un = [f for f in flags if f.rule == "thesis_unevaluable"]
-        assert len(un) == 1 and un[0].instrument_id == vusa.id and un[0].severity == "review"
+        un = [f for f in flags if f.rule == "thesis_unevaluable" and f.instrument_id == vusa.id]
+        assert len(un) == 1 and un[0].severity == "review"
         assert "Thesis text that the DSL cannot check" in un[0].summary
-        inv = [f for f in flags if f.rule == "thesis_invalidated"]
-        assert len(inv) == 1 and inv[0].instrument_id == x9.id and inv[0].severity == "mandatory"
+        inv = [f for f in flags if f.rule == "thesis_invalidated" and f.severity == "mandatory"]
+        assert (
+            len(inv) == 1
+            and inv[0].instrument_id == x9.id
+            and inv[0].action == "SELL"
+            and "true today" in inv[0].summary
+        )
+        assert any(f.rule == "thesis_review" and f.instrument_id == x9.id for f in flags)
+        assert any(
+            f.rule == "thesis_human"
+            and f.instrument_id == x9.id
+            and "swap counterparty" in f.summary
+            for f in flags
+        )
 
 
 # -------------------------------------------------------------------------------------- decisions/paper
@@ -258,13 +326,12 @@ def test_pipeline_decisions_idempotent_and_paper(seeded):
             f["rule"] == "max_position" and f["severity"] == "review"
             for f in pot_d.rules_json["flags"]
         )
-        assert (
-            "Regime" in pot_d.reasoning_md
-            and "MANDATORY" not in pot_d.reasoning_md
-            and "REVIEW" in pot_d.reasoning_md
-        )
+        rules_section = pot_d.reasoning_md.split("## Rules")[1].split("## Kill condition")[0]
+        assert "Regime" in pot_d.reasoning_md
+        assert "MANDATORY" not in rules_section and "REVIEW" in rules_section
         assert "What would reverse this" in pot_d.reasoning_md
-        assert any("provisional" in n for n in res.notes)
+        assert not any("provisional" in n for n in res.notes)
+        assert "## Kill condition" in pot_d.reasoning_md and "Gold Dec-26" in pot_d.reasoning_md
         assert all(d.user_status == "pending" for d in res.decisions)
         # rerun the same day: nothing new
         again = run_pipeline(s, seeded, TODAY)
@@ -272,8 +339,24 @@ def test_pipeline_decisions_idempotent_and_paper(seeded):
         assert len(s.exec(select(Decision)).all()) == res.created
         # paper book seeded from the confirmed positions
         assert PaperBroker().is_seeded(s)
-        rows = PaperBroker().compare(s, res.view)
-        assert all(abs(r["diff_eur"]) < 1 for r in rows)
+        rows = {r["ticker"]: r for r in PaperBroker().compare(s, res.view)}
+        actionable = {
+            s.get(Instrument, d.instrument_id).ticker
+            for d in res.decisions
+            if d.action in ("BUY", "ADD", "TRIM", "SELL")
+        }
+        # the paper book only diverges where the system acted (plus cash, which funds the buys)
+        for t, r in rows.items():
+            if t not in actionable and t != "CASH_USD":
+                assert abs(r["diff_eur"]) < 1, (t, r)
+        assert res.paper_fills == len(actionable)
+        for t in actionable:
+            assert abs(rows[t]["diff_eur"]) > 1, t
+        # a held instrument never gets both a HOLD and an ADD on the same day
+        per_inst = {}
+        for d in res.decisions:
+            per_inst.setdefault(d.instrument_id, set()).add(d.action)
+        assert not any({"HOLD", "ADD"} <= acts for acts in per_inst.values())
 
 
 def test_execute_sell_and_buy_updates_positions(seeded):
@@ -342,3 +425,47 @@ def test_execute_sell_and_buy_updates_positions(seeded):
 def test_revolut_stub():
     with pytest.raises(NotImplementedError):
         RevolutBroker().positions(None)
+
+
+def test_seed_kill_conditions_loaded(seeded):
+    from desk.kill_conditions import candidate_conditions, condition_for
+
+    with session_scope(seeded) as s:
+        for t, n_kills in (
+            ("COMMODITIES_POT", 3),
+            ("SPCX", 3),
+            ("TSLA", 2),
+            ("X9I1", 3),
+            ("4COP", 3),
+            ("VUSA", 2),
+            ("ROBO_ADVISOR", 0),
+        ):
+            pos = s.exec(select(Position).where(Position.instrument_id == _inst(s, t).id)).one()
+            assert pos.kill_json is not None and len(pos.kill_json["kills"]) == n_kills, t
+        pot = s.exec(
+            select(Position).where(Position.instrument_id == _inst(s, "COMMODITIES_POT").id)
+        ).one()
+        assert pot.kill_predicate == "house_view('commodity', 'Gold Dec-26').value < 4470"
+        assert "composition_confirmed" in pot.kill_json["pre_condition"]
+        cop = s.exec(select(Position).where(Position.instrument_id == _inst(s, "4COP").id)).one()
+        assert cop.kill_json["add_blocked_while"].startswith("theme_weight('gold')")
+        cands = candidate_conditions(seeded)
+        assert set(cands) == {"EU_BROAD_ETF", "INDUSTRIALS_ETF"}
+        assert condition_for(_inst(s, "EXW1"), cands)["theme"] == "eu_broad"
+        assert condition_for(_inst(s, "ZPDI"), cands)["kills"][1]["human"].startswith(
+            "Two or more hyperscalers"
+        )
+        assert condition_for(_inst(s, "TSLA"), cands) is None
+
+
+def test_add_blocked_while(seeded):
+    from desk.rules import add_blocked
+
+    with session_scope(seeded) as s:
+        view = build_portfolio(s, seeded)
+        cop = next(p for p in view.positions if p.instrument.ticker == "4COP")
+        assert add_blocked(s, cop, view, TODAY).startswith(
+            "theme_weight('gold')"
+        )  # gold 62% + copper > 35
+        tsla = next(p for p in view.positions if p.instrument.ticker == "TSLA")
+        assert add_blocked(s, tsla, view, TODAY) is None

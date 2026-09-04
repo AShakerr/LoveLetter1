@@ -16,11 +16,16 @@ from sqlmodel import Session, select
 
 from desk.broker import PaperBroker
 from desk.config import Settings, get_settings
-from desk.kill_conditions import KillCondition, candidate_conditions
+from desk.kill_conditions import (
+    candidate_conditions,
+    condition_for,
+    first_mandatory_predicate,
+    kill_block,
+)
 from desk.models import Decision, Instrument, InstrumentKind, Position, Pot, Regime
 from desk.portfolio import Limits, PortfolioView, build_portfolio
 from desk.regime import classify
-from desk.rules import Flag, RuleConfig, flags_for, global_flags, run_rules
+from desk.rules import Flag, RuleConfig, add_blocked, flags_for, global_flags, run_rules
 from desk.score import WEIGHTS, ScoreResult, band, score_universe
 from desk.sources.base import utcnow
 
@@ -107,7 +112,7 @@ def reasoning_markdown(
     res: ScoreResult | None,
     flags: list[Flag],
     size_pct: float | None,
-    kill: KillCondition | None,
+    kill: dict[str, Any] | None,
     reverse: str,
     basis_note: str | None,
 ) -> str:
@@ -129,10 +134,24 @@ def reasoning_markdown(
         out += ["**REVIEW**", ""] + [f"- `{f.rule}`: {f.summary}" for f in rev] + [""]
     if not mand and not rev:
         out += ["No rules fired.", ""]
-    if kill is not None and (kill.thesis or kill.predicate):
-        out += ["## Kill condition", "", f"{kill.thesis or ''}", ""]
-        if kill.predicate:
-            out += [f"`{kill.predicate}`", ""]
+    if kill and (kill.get("thesis") or kill.get("kills")):
+        out += ["## Kill condition", "", f"{kill.get('thesis') or ''}", ""]
+        for k in kill.get("kills") or []:
+            sev = k.get("severity", "mandatory").upper()
+            if k.get("predicate"):
+                out.append(
+                    f"- **{sev}** `{k['predicate']}`" + (f" — {k['note']}" if k.get("note") else "")
+                )
+            elif k.get("human"):
+                out.append(
+                    f"- **{sev}, human check** {k['human']}"
+                    + (f" — {k['note']}" if k.get("note") else "")
+                )
+        if kill.get("add_blocked_while"):
+            out.append(f"- ADD blocked while `{kill['add_blocked_while']}`")
+        if kill.get("pre_condition"):
+            out.append(f"- Pre-condition: {kill['pre_condition']}")
+        out.append("")
     out += ["## What would reverse this", "", reverse, ""]
     return "\n".join(out)
 
@@ -177,8 +196,11 @@ def run_pipeline(
     mandatory_ids = {f.instrument_id for f in flags if f.severity == "mandatory"}
     new: list[Decision] = []
 
-    # 1. held positions: SELL / TRIM from mandatory rules, otherwise HOLD
+    # 1. held positions: SELL / TRIM from mandatory rules, otherwise HOLD (written after the buy side,
+    #    so an ADD on a held position supersedes its HOLD)
     proceeds = 0.0
+    held_decisions: list[tuple] = []
+    add_ids: set[int] = set()
     for p in view.positions:
         inst = p.instrument
         if inst.kind in (InstrumentKind.cash, InstrumentKind.other):
@@ -203,10 +225,11 @@ def run_pipeline(
                 f"A mandatory rule firing (stop {p.position.stop_pct or cfg.stop_loss.get(inst.kind.value) or 'n/a'}, "
                 f"limit breach, kill condition) or the score falling below {cfg.score_floor:.0f}."
             )
-        kill = KillCondition(inst.ticker, p.position.kill_condition, p.position.kill_predicate)
-        if _exists(session, today, inst.id, action):
-            continue
-        d = Decision(
+        kill = kill_block(p.position)
+        held_decisions.append((p, inst, action, size, res, my_flags, kill, reverse))
+
+    def _held_decision(inst, action, size, res, my_flags, kill, reverse) -> Decision:
+        return Decision(
             date=today,
             instrument_id=inst.id,
             action=action,
@@ -217,8 +240,9 @@ def run_pipeline(
                     {"rule": f.rule, "severity": f.severity, "summary": f.summary, **f.detail}
                     for f in my_flags
                 ],
-                "kill_condition": kill.thesis,
-                "kill_predicate": kill.predicate,
+                "kill_condition": (kill or {}).get("thesis"),
+                "kill_predicate": first_mandatory_predicate(kill),
+                "kill_json": kill,
                 "score": res.row.total if res else None,
                 "band": res.band if res else None,
                 "provisional": res.provisional if res else None,
@@ -230,7 +254,11 @@ def run_pipeline(
             ),
             created_at=utcnow(),
         )
-        new.append(d)
+
+    # mandatory SELL / TRIM first
+    for _p, inst, action, size, res, my_flags, kill, reverse in held_decisions:
+        if action != "HOLD" and not _exists(session, today, inst.id, action):
+            new.append(_held_decision(inst, action, size, res, my_flags, kill, reverse))
 
     # 2. buy side: score >= 75, tradable, no mandatory conflict; sized by cash + limits + 5% cap
     cash_avail = (view.cash_eur / view.total_eur if view.total_eur else 0.0) + proceeds
@@ -270,8 +298,23 @@ def run_pipeline(
             out.notes.append(f"{inst.ticker} scores {res.row.total:.0f} but has no limit headroom")
             continue
         action = "ADD" if pv else "BUY"
-        kill = kills.get(inst.ticker) or KillCondition(
-            inst.ticker, f"Score falls below {cfg.score_floor:.0f} or a mandatory rule fires.", None
+        if pv is not None:
+            blocked = add_blocked(session, pv, view, today)
+            if blocked:
+                out.notes.append(
+                    f"{inst.ticker} scores {res.row.total:.0f} but ADD is blocked while {blocked}"
+                )
+                continue
+        kill = (
+            (kill_block(pv.position) if pv else None)
+            or condition_for(inst, kills)
+            or {
+                "thesis": f"Score falls below {cfg.score_floor:.0f} or a mandatory rule fires.",
+                "kills": [],
+                "add_blocked_while": None,
+                "pre_condition": None,
+                "theme": inst.theme,
+            }
         )
         my_flags = flags_for(flags, inst.id)
         if _exists(session, today, inst.id, action):
@@ -287,8 +330,9 @@ def run_pipeline(
                 "flags": [
                     {"rule": f.rule, "severity": f.severity, "summary": f.summary} for f in my_flags
                 ],
-                "kill_condition": kill.thesis,
-                "kill_predicate": kill.predicate,
+                "kill_condition": (kill or {}).get("thesis"),
+                "kill_predicate": first_mandatory_predicate(kill),
+                "kill_json": kill,
                 "score": res.row.total,
                 "band": res.band,
                 "provisional": res.provisional,
@@ -314,7 +358,17 @@ def run_pipeline(
             created_at=utcnow(),
         )
         new.append(d)
+        add_ids.add(inst.id)
         cash_avail -= size
+
+    # HOLDs for held positions that got neither a mandatory action nor an ADD
+    for _p, inst, action, size, res, my_flags, kill, reverse in held_decisions:
+        if (
+            action == "HOLD"
+            and inst.id not in add_ids
+            and not _exists(session, today, inst.id, "HOLD")
+        ):
+            new.append(_held_decision(inst, action, size, res, my_flags, kill, reverse))
 
     # 3. AVOID: watchlist instruments (not held) scoring below the watch band
     for res in results:
@@ -454,6 +508,7 @@ def _apply_execution(session: Session, decision: Decision, settings: Settings) -
             batch=f"decision:{decision.id}",
             kill_condition=rj.get("kill_condition"),
             kill_predicate=rj.get("kill_predicate"),
+            kill_json=rj.get("kill_json"),
         )
     )
 

@@ -15,8 +15,9 @@ from sqlmodel import Session, select
 
 from desk.config import Settings, get_settings
 from desk.houseviews import current_stance
+from desk.kill_conditions import kill_block
 from desk.models import Instrument, InstrumentKind, RuleFired
-from desk.portfolio import PortfolioView, PositionView
+from desk.portfolio import Limits, PortfolioView, PositionView
 from desk.predicates import Context, PredicateError, evaluate
 from desk.score import ScoreResult, score_history
 from desk.tape import TAPE, load_tape
@@ -201,43 +202,141 @@ def rule_max_theme(view: PortfolioView, cfg: RuleConfig) -> list[Flag]:
 
 def rule_thesis(
     session: Session, p: PositionView, view: PortfolioView, today: dt.date
-) -> Flag | None:
-    pred = p.position.kill_predicate
+) -> list[Flag]:
+    """Evaluate every kill entry on the position.
+
+    predicate true + mandatory -> MANDATORY SELL (thesis_invalidated)
+    predicate true + review    -> REVIEW (thesis_review)
+    human entry                -> REVIEW (thesis_human): the DSL cannot check it, so it is shown, never dropped
+    evaluation error           -> REVIEW (thesis_unevaluable) with the thesis text
+    While a pot's composition is unconfirmed, its mandatory hits are downgraded to REVIEW with the
+    "confirm pot composition" prefix (the pre_condition in the kill file)."""
+    block = kill_block(p.position)
+    if not block:
+        return []
+    thesis = block.get("thesis") or "(no thesis text)"
+    ctx = Context(session, p.instrument, p.position, view.by_theme, today)
+    out: list[Flag] = []
+    for k in block.get("kills") or []:
+        sev = k.get("severity", "mandatory")
+        note = k.get("note")
+        if k.get("human"):
+            out.append(
+                Flag(
+                    "thesis_human",
+                    REVIEW,
+                    p.instrument.id,
+                    p.position.id,
+                    None,
+                    None,
+                    {
+                        "summary": f"{p.instrument.ticker}: needs a human check ({sev}): {k['human']}"
+                        + (f" — {note}" if note else "")
+                        + f". Thesis: {thesis}",
+                        "human": k["human"],
+                        "severity_declared": sev,
+                        "thesis": thesis,
+                        "note": note,
+                    },
+                )
+            )
+            continue
+        pred = k.get("predicate")
+        try:
+            fired = evaluate(pred, ctx)
+        except PredicateError as exc:
+            out.append(
+                Flag(
+                    "thesis_unevaluable",
+                    REVIEW,
+                    p.instrument.id,
+                    p.position.id,
+                    None,
+                    None,
+                    {
+                        "summary": f"{p.instrument.ticker}: kill condition cannot be evaluated ({exc}): `{pred}`. Thesis: {thesis}",
+                        "predicate": pred,
+                        "error": str(exc),
+                        "thesis": thesis,
+                        "severity_declared": sev,
+                        "note": note,
+                    },
+                )
+            )
+            continue
+        if not fired:
+            continue
+        detail = {"predicate": pred, "thesis": thesis, "note": note, "severity_declared": sev}
+        if sev == "mandatory" and _unconfirmed_pot(p):
+            out.append(
+                Flag(
+                    "thesis_invalidated",
+                    REVIEW,
+                    p.instrument.id,
+                    p.position.id,
+                    None,
+                    None,
+                    {
+                        **detail,
+                        "composition_confirmed": False,
+                        "summary": f"confirm pot composition: {p.instrument.ticker} kill condition `{pred}` is true"
+                        + (f" — {note}" if note else "")
+                        + "; it becomes a mandatory SELL once the composition is confirmed",
+                    },
+                )
+            )
+        elif sev == "mandatory":
+            out.append(
+                Flag(
+                    "thesis_invalidated",
+                    MANDATORY,
+                    p.instrument.id,
+                    p.position.id,
+                    "SELL",
+                    p.weight,
+                    {
+                        **detail,
+                        "summary": f"{p.instrument.ticker}: kill condition true: `{pred}`"
+                        + (f" — {note}" if note else "")
+                        + f". Thesis: {thesis}",
+                    },
+                )
+            )
+        else:
+            out.append(
+                Flag(
+                    "thesis_review",
+                    REVIEW,
+                    p.instrument.id,
+                    p.position.id,
+                    None,
+                    None,
+                    {
+                        **detail,
+                        "summary": f"{p.instrument.ticker}: review trigger true: `{pred}`"
+                        + (f" — {note}" if note else ""),
+                    },
+                )
+            )
+    return out
+
+
+def add_blocked(
+    session: Session, p: PositionView, view: PortfolioView, today: dt.date
+) -> str | None:
+    """The kill file's add_blocked_while predicate, when it is true. Errors count as blocked (with the reason)."""
+    block = kill_block(p.position)
+    pred = (block or {}).get("add_blocked_while")
     if not pred:
         return None
-    ctx = Context(session, p.instrument, p.position, view.by_theme, today)
     try:
-        fired = evaluate(pred, ctx)
+        return (
+            pred
+            if evaluate(pred, Context(session, p.instrument, p.position, view.by_theme, today))
+            else None
+        )
     except PredicateError as exc:
-        return Flag(
-            "thesis_unevaluable",
-            REVIEW,
-            p.instrument.id,
-            p.position.id,
-            None,
-            None,
-            {
-                "summary": f"{p.instrument.ticker}: kill condition cannot be evaluated ({exc}). Thesis: {p.position.kill_condition or '(none)'}",
-                "predicate": pred,
-                "error": str(exc),
-                "thesis": p.position.kill_condition,
-            },
-        )
-    if fired:
-        return Flag(
-            "thesis_invalidated",
-            MANDATORY,
-            p.instrument.id,
-            p.position.id,
-            "SELL",
-            p.weight,
-            {
-                "summary": f"{p.instrument.ticker}: kill condition true: {pred}. Thesis: {p.position.kill_condition or '(none)'}",
-                "predicate": pred,
-                "thesis": p.position.kill_condition,
-            },
-        )
-    return None
+        return f"{pred} (cannot evaluate: {exc})"
 
 
 def rule_house_downgrade(session: Session, p: PositionView) -> Flag | None:
@@ -365,8 +464,10 @@ def rule_stale_inputs(session: Session, cfg: RuleConfig) -> Flag | None:
     return None
 
 
-def rule_concentration(view: PortfolioView, cfg: RuleConfig) -> Flag | None:
-    core = sum(p.weight for p in view.positions if p.theme == "diversified core")
+def rule_concentration(
+    view: PortfolioView, cfg: RuleConfig, core_themes: tuple[str, ...]
+) -> Flag | None:
+    core = sum(p.weight for p in view.positions if p.theme in core_themes)
     if view.positions and core < cfg.min_diversified_core_warn:
         return Flag(
             "concentration_warning",
@@ -376,7 +477,7 @@ def rule_concentration(view: PortfolioView, cfg: RuleConfig) -> Flag | None:
             None,
             None,
             {
-                "summary": f"diversified core is {core:.1%} of the book (warn below {cfg.min_diversified_core_warn:.0%})",
+                "summary": f"diversified core ({', '.join(core_themes)}) is {core:.1%} of the book (warn below {cfg.min_diversified_core_warn:.0%})",
                 "core": core,
                 "warn": cfg.min_diversified_core_warn,
             },
@@ -397,6 +498,7 @@ def run_rules(
     settings = settings or get_settings()
     today = today or dt.date.today()
     cfg = RuleConfig.load(settings)
+    core_themes = Limits.load(settings.config_dir / "limits.yaml").core_themes
     flags: list[Flag] = []
     for p in view.positions:
         if p.instrument.kind in (InstrumentKind.cash, InstrumentKind.other):
@@ -405,7 +507,6 @@ def run_rules(
         for f in (
             rule_stop_loss(p, cfg),
             rule_max_position(p, cfg),
-            rule_thesis(session, p, view, today),
             rule_house_downgrade(session, p),
             rule_score_decay(session, p, res, cfg, today),
             rule_momentum_break(p, res, cfg),
@@ -413,8 +514,9 @@ def run_rules(
         ):
             if f is not None:
                 flags.append(f)
+        flags.extend(rule_thesis(session, p, view, today))
     flags.extend(rule_max_theme(view, cfg))
-    for f in (rule_stale_inputs(session, cfg), rule_concentration(view, cfg)):
+    for f in (rule_stale_inputs(session, cfg), rule_concentration(view, cfg, core_themes)):
         if f is not None:
             flags.append(f)
     if persist:

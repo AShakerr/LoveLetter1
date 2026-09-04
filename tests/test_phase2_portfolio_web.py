@@ -71,6 +71,9 @@ def test_portfolio_valuation_and_limits(settings, seeded):
         assert abs(sum(p.weight for p in view.positions) - 1) < 1e-9
         bars = {b.label: b for b in view.limits}
         assert bars["Largest theme"].status == "breach" and bars["Largest theme"].detail == "gold"
+        assert bars["Diversified core"].value == pytest.approx(
+            sum(p.weight for p in view.positions if p.theme in ("us_broad", "em_broad"))
+        )
         assert bars["Diversified core"].status == "breach"
         assert bars["Crypto"].value == 0
         assert any("unidentified" in w for w in view.warnings)

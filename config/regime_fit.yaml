@@ -1,0 +1,134 @@
+# config/regime_fit.yaml
+# The opinionated part of the conviction score (f_regime, weight 20).
+# Each theme gets a 0-5 score per regime state. f_regime = 0.6 * fit(current regime) + 0.4 * fit(reverse scenario),
+# where fit() is the mean of the four dimension scores. The reverse scenario is the flip that would most change
+# the world: it is what "does it survive the reverse?" means in the brief. Edit the numbers, not the structure.
+#
+# Regime states (from desk/regime.py):
+#   inflation_state: energy_shock | broad | contained
+#   policy_state:    hiking | on_hold | cutting
+#   oil_state:       shock | elevated | normal
+#   vol_state:       complacent | normal | stressed
+#
+# Written 4 Sep 2026 against the regime "energy_shock / hiking / shock / complacent".
+
+reverse_scenario:
+  # Hormuz reopens: oil normalises, headline inflation converges to core, hiking debate ends.
+  inflation_state: contained
+  policy_state: on_hold
+  oil_state: normal
+  vol_state: normal
+
+themes:
+
+  us_broad:            # VUSA, S&P 500 index ETFs
+    inflation_state: {energy_shock: 3, broad: 2, contained: 4}
+    policy_state:    {hiking: 2, on_hold: 4, cutting: 4}
+    oil_state:       {shock: 3, elevated: 3, normal: 4}
+    vol_state:       {complacent: 3, normal: 4, stressed: 2}
+    note: "Survives most regimes; penalised while the Fed is hiking into a 21x multiple."
+
+  eu_broad:            # Euro Stoxx 50 / MSCI EMU ETFs, unhedged
+    inflation_state: {energy_shock: 2, broad: 2, contained: 4}
+    policy_state:    {hiking: 3, on_hold: 4, cutting: 4}
+    oil_state:       {shock: 2, elevated: 3, normal: 5}
+    vol_state:       {complacent: 3, normal: 4, stressed: 2}
+    note: "Europe is the biggest loser from $95 oil and the biggest winner from its reversal. Reverse-scenario score is what carries this."
+
+  em_broad:            # X9I1 and similar
+    inflation_state: {energy_shock: 2, broad: 2, contained: 4}
+    policy_state:    {hiking: 2, on_hold: 4, cutting: 5}
+    oil_state:       {shock: 2, elevated: 3, normal: 4}
+    vol_state:       {complacent: 3, normal: 4, stressed: 1}
+    note: "Rate-sensitive and dollar-sensitive. El Nino food-price risk is an extra headwind Safra flagged."
+
+  industrials:         # capital goods, electrical infrastructure, aerospace
+    inflation_state: {energy_shock: 3, broad: 3, contained: 4}
+    policy_state:    {hiking: 3, on_hold: 4, cutting: 4}
+    oil_state:       {shock: 3, elevated: 3, normal: 4}
+    vol_state:       {complacent: 4, normal: 4, stressed: 2}
+    note: "Backlog-driven, less rate-sensitive than the index. Capex-cycle risk lives in the kill condition, not here."
+
+  ai_capex:            # NVDA, SNOW, PANW, Nasdaq 100
+    inflation_state: {energy_shock: 3, broad: 2, contained: 4}
+    policy_state:    {hiking: 2, on_hold: 4, cutting: 5}
+    oil_state:       {shock: 3, elevated: 3, normal: 4}
+    vol_state:       {complacent: 4, normal: 3, stressed: 1}
+    note: "Long-duration cash flows. Hiking plus a 30y at 5.2% is the wrong regime for it, and Safra says Q2 was peak earnings growth."
+
+  utilities_power:     # VST, regulated utilities, IPPs
+    inflation_state: {energy_shock: 2, broad: 2, contained: 4}
+    policy_state:    {hiking: 1, on_hold: 3, cutting: 5}
+    oil_state:       {shock: 2, elevated: 3, normal: 3}
+    vol_state:       {complacent: 3, normal: 4, stressed: 4}
+    note: "Bond proxy. Needs the hiking cycle to end. The data-centre demand story is real but does not change the rate sensitivity."
+
+  materials_copper:    # 4COP, copper miners, base metals
+    inflation_state: {energy_shock: 3, broad: 4, contained: 3}
+    policy_state:    {hiking: 3, on_hold: 4, cutting: 4}
+    oil_state:       {shock: 3, elevated: 4, normal: 3}
+    vol_state:       {complacent: 4, normal: 3, stressed: 1}
+    note: "Electrification demand is structural; the price is cyclical. Scores fine on its own; portfolio fit is what penalises it."
+
+  gold:                # commodities pot (assumed), gold ETCs
+    inflation_state: {energy_shock: 3, broad: 4, contained: 2}
+    policy_state:    {hiking: 1, on_hold: 3, cutting: 5}
+    oil_state:       {shock: 3, elevated: 3, normal: 2}
+    vol_state:       {complacent: 2, normal: 3, stressed: 5}
+    note: "Real yields are the whole story. Hiking scores 1 because that is exactly what took it from 5,608 to 4,470."
+
+  energy:              # oil majors, XLE-equivalents
+    inflation_state: {energy_shock: 5, broad: 3, contained: 1}
+    policy_state:    {hiking: 3, on_hold: 3, cutting: 2}
+    oil_state:       {shock: 5, elevated: 3, normal: 1}
+    vol_state:       {complacent: 3, normal: 3, stressed: 3}
+    note: "Perfect fit for the current regime, near-zero for the reverse. The 0.4 reverse weight is what stops the model chasing it."
+
+  healthcare:
+    inflation_state: {energy_shock: 3, broad: 3, contained: 3}
+    policy_state:    {hiking: 3, on_hold: 3, cutting: 3}
+    oil_state:       {shock: 3, elevated: 3, normal: 3}
+    vol_state:       {complacent: 2, normal: 3, stressed: 4}
+    note: "Regime-agnostic defensive. Safra's neutral is about earnings, not macro."
+
+  financials:          # banks, brokers, asset managers
+    inflation_state: {energy_shock: 3, broad: 3, contained: 3}
+    policy_state:    {hiking: 3, on_hold: 4, cutting: 2}
+    oil_state:       {shock: 3, elevated: 3, normal: 3}
+    vol_state:       {complacent: 4, normal: 3, stressed: 1}
+    note: "Capital-markets names like the volatility-free tape; banks carry the private-credit default risk Safra named."
+
+  ev_auto:             # TSLA
+    inflation_state: {energy_shock: 3, broad: 2, contained: 3}
+    policy_state:    {hiking: 1, on_hold: 3, cutting: 5}
+    oil_state:       {shock: 4, elevated: 3, normal: 2}
+    vol_state:       {complacent: 4, normal: 3, stressed: 1}
+    note: "Consumer-durable financed at the margin; hiking hurts. High oil is a mild tailwind for EV demand."
+
+  private_space:       # SPCX
+    inflation_state: {energy_shock: 3, broad: 3, contained: 3}
+    policy_state:    {hiking: 2, on_hold: 3, cutting: 4}
+    oil_state:       {shock: 3, elevated: 3, normal: 3}
+    vol_state:       {complacent: 3, normal: 3, stressed: 1}
+    note: "Regime barely matters; liquidity does. Scored flat on purpose so the illiquid limit and kill condition do the work."
+
+  crypto:              # BTC, ETH
+    inflation_state: {energy_shock: 2, broad: 2, contained: 3}
+    policy_state:    {hiking: 1, on_hold: 3, cutting: 5}
+    oil_state:       {shock: 2, elevated: 3, normal: 3}
+    vol_state:       {complacent: 4, normal: 3, stressed: 1}
+    note: "Trades as long-duration risk. Hiking is the worst regime for it, which the -30% one-year return confirms."
+
+  egypt:               # EGX30 proxies, Egyptian banks
+    inflation_state: {energy_shock: 1, broad: 2, contained: 4}
+    policy_state:    {hiking: 2, on_hold: 3, cutting: 4}
+    oil_state:       {shock: 1, elevated: 2, normal: 5}
+    vol_state:       {complacent: 3, normal: 3, stressed: 1}
+    note: "Net energy importer with Suez exposure. Oil shock scores 1 regardless of the +34% YTD; the reverse scenario is where it shines."
+
+  cash_eur:
+    inflation_state: {energy_shock: 3, broad: 2, contained: 3}
+    policy_state:    {hiking: 4, on_hold: 3, cutting: 2}
+    oil_state:       {shock: 3, elevated: 3, normal: 3}
+    vol_state:       {complacent: 3, normal: 3, stressed: 5}
+    note: "Included so the model can prefer waiting. Hiking makes cash pay; stressed vol makes it the best asset."

@@ -474,7 +474,12 @@ def score_universe(
     val_cfg = {u["ticker"]: u.get("valuation") for u in universe}
     fit = RegimeFit.load(settings.config_dir / "regime_fit.yaml")
     views = all_views(session)
-    instruments = [i for i in session.exec(select(Instrument)).all() if i.kind in SCORABLE_KINDS]
+    held_ids = {p.instrument.id for p in view.positions}
+    instruments = [
+        i
+        for i in session.exec(select(Instrument)).all()
+        if i.kind in SCORABLE_KINDS and (i.tradable or i.id in held_ids)
+    ]
     universe_returns: dict[int, float] = {}
     for i in instruments:
         r, _ = three_month_return(session, i.id, today)

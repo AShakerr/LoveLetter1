@@ -24,11 +24,19 @@ class Limits:
     min_diversified_core_target: float = 0.40
     min_diversified_core_warn: float = 0.25
     max_crypto: float = 0.05
+    core_themes: tuple[str, ...] = ("us_broad", "eu_broad", "em_broad")
 
     @classmethod
     def load(cls, path: Path) -> Limits:
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        return cls(**{k: float(v) for k, v in doc.items() if k in cls.__dataclass_fields__})
+        kw = {
+            k: float(v)
+            for k, v in doc.items()
+            if k in cls.__dataclass_fields__ and k != "core_themes"
+        }
+        if doc.get("core_themes"):
+            kw["core_themes"] = tuple(str(t) for t in doc["core_themes"])
+        return cls(**kw)
 
 
 @dataclass
@@ -237,7 +245,7 @@ def limit_bars(view: PortfolioView, limits: Limits) -> list[LimitBar]:
             ),
         )
     )
-    core = sum(p.weight for p in view.positions if (p.instrument.theme or "") == "diversified core")
+    core = sum(p.weight for p in view.positions if (p.instrument.theme or "") in limits.core_themes)
     bars.append(
         LimitBar(
             "Diversified core",

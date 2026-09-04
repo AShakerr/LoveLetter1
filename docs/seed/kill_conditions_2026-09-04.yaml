@@ -1,0 +1,133 @@
+# docs/seed/kill_conditions_2026-09-04.yaml
+# Thesis-invalidation triggers for the positions held on 4 Sep 2026, so rules.thesis_invalidated has something to check
+# from day one. Each has a human `thesis`, a machine-checkable `predicate` where possible, and a `severity`.
+# Predicates use the small DSL the rules engine should support:
+#   house_view(scope, key).stance          latest Safra stance for that key
+#   observation(series)                    latest value from observations
+#   close(ticker)                          latest close from prices
+#   change_pct(ticker, days)               close change over N trading days
+#   theme_weight(theme)                    current portfolio weight of a theme, %
+#   days_since(series)                     age of the latest observation
+# Anything the DSL cannot express stays as a REVIEW flag with the thesis text shown, never silently dropped.
+
+positions:
+
+  COMMODITIES_POT:
+    theme: gold             # assumed until composition confirmed
+    thesis: >
+      Gold as a hedge against sovereign-debt concerns, reserve diversification and Fed-independence risk, per Safra's
+      $4,600 Dec-26 and $5,000 Dec-27 path. The position is oversized regardless of whether the thesis holds.
+    kill:
+      - predicate: "house_view('commodity', 'Gold Dec-26').value < 4470"
+        severity: mandatory
+        note: "Safra cuts its year-end gold target below spot. The house no longer sees upside."
+      - predicate: "observation('DGS30') > 5.50"
+        severity: review
+        note: "30y real-yield pressure above 5.5% has been the single driver of the drawdown; reassess size."
+      - predicate: "theme_weight('gold') > 35"
+        severity: mandatory
+        note: "Already true on day one. This is the max_theme rule restated so it is visible on the position itself."
+    pre_condition: "composition_confirmed == false -> emit REVIEW 'confirm pot composition' instead of mandatory TRIM"
+
+  SPCX:
+    theme: private_space
+    thesis: >
+      Exposure to SpaceX ahead of and through its public listing; Morgan Stanley led the $86.3bn offering.
+      Held as illiquid capital, not a tradeable line.
+    kill:
+      - predicate: "theme_weight('private_space') > 15"
+        severity: mandatory
+        note: "Illiquid limit. At 14.2% it is one bad gold week away from breaching by denominator shrinkage."
+      - predicate: "change_pct('SPCX', 60) < -25"
+        severity: review
+        note: "Periodic pricing means a 25% mark-down is a real signal, not noise."
+      - human: "Listing completes and a liquid public line exists on Revolut"
+        severity: review
+        note: "Re-underwrite as a public stock; the private-line premium/discount closes."
+
+  TSLA:
+    theme: ev_auto
+    thesis: >
+      Single-name EV and autonomy bet. No house coverage. Held on conviction, so the kill conditions are price-based.
+    kill:
+      - predicate: "close('TSLA') < 0.82 * avg_cost('TSLA')"
+        severity: mandatory
+        note: "18% stop from average cost (backed out as ~$399.91). Trips near $328."
+      - predicate: "change_pct('TSLA', 90) < -20 and sentiment('TSLA', 14) < -0.15"
+        severity: review
+        note: "Momentum break with negative news tone."
+
+  X9I1:
+    theme: em_broad
+    thesis: >
+      Diversified EM exposure; Safra neutral on EM, constructive on China within it; MSCI EM target 1,750.
+    kill:
+      - predicate: "house_view('region', 'Emerging Markets').stance == 'least_preferred'"
+        severity: mandatory
+      - predicate: "close('X9I1') < 0.88 * avg_cost('X9I1')"
+        severity: mandatory
+        note: "12% ETF stop from ~EUR 6.67 average cost."
+      - predicate: "observation('DXY') > 105 and change_pct('X9I1', 60) < -10"
+        severity: review
+        note: "Dollar squeeze on EM. DXY series to be added to observations."
+
+  4COP:
+    theme: materials_copper
+    thesis: >
+      Electrification and grid-buildout demand for copper; Safra Materials most preferred.
+    kill:
+      - predicate: "house_view('sector', 'Materials').stance == 'least_preferred'"
+        severity: mandatory
+      - predicate: "close('4COP') < 0.88 * avg_cost('4COP')"
+        severity: mandatory
+        note: "12% ETF stop from ~EUR 58.48."
+      - predicate: "change_pct('HG=F', 60) < -15"
+        severity: review
+        note: "Copper itself rolling over."
+    add_blocked_while: "theme_weight('gold') + theme_weight('materials_copper') > 35"
+
+  VUSA:
+    theme: us_broad
+    thesis: >
+      Diversified core. Safra USA most preferred, S&P target 8,200. This is the position that should grow.
+    kill:
+      - predicate: "house_view('region', 'USA').stance == 'least_preferred'"
+        severity: mandatory
+      - predicate: "close('VUSA') < 0.85 * avg_cost('VUSA')"
+        severity: review
+        note: "Core holdings get a review, not a mandatory stop; the correct response to a 15% index drawdown is usually to add."
+
+  ROBO_ADVISOR:
+    theme: us_broad
+    thesis: "Negligible; leave alone."
+    kill: []
+
+# Not held yet, but the top-ranked candidates carry kill conditions from the moment a BUY decision is logged:
+
+candidates:
+
+  EU_BROAD_ETF:
+    theme: eu_broad
+    thesis: >
+      Safra most preferred (upgraded Aug), prefer unhedged; Euro Stoxx 50 target 6,900; fixes currency mismatch and core gap.
+    kill:
+      - predicate: "house_view('region', 'Euro area').stance != 'most_preferred'"
+        severity: mandatory
+        note: "The idea is the upgrade. If the upgrade reverses, so does the idea."
+      - predicate: "observation('ECB_DEPO') > 2.75"
+        severity: review
+        note: "ECB hiking past 2.50 into a 1.0% growth economy."
+      - predicate: "close('BZ=F') > 110"
+        severity: review
+        note: "Europe is the biggest loser from an oil re-escalation."
+
+  INDUSTRIALS_ETF:
+    theme: industrials
+    thesis: >
+      Safra most preferred (upgraded Aug); the one cyclical-seasonality claim with academic support; least fragile way to own the AI buildout.
+    kill:
+      - predicate: "house_view('sector', 'Industrials').stance != 'most_preferred'"
+        severity: mandatory
+      - human: "Two or more hyperscalers cut 2027 capex guidance in Q3 earnings"
+        severity: mandatory
+        note: "Backlog risk CFRA quantified at 30-50% of Quanta's 2026 data-centre projects."
