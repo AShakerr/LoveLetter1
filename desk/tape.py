@@ -52,6 +52,7 @@ MORE: list[TapeSpec] = [
     TapeSpec("Silver", "price", "SI=F", unit="$"),
     TapeSpec("EUR/USD", "price", "EURUSD=X", decimals=4),
     TapeSpec("EUR/GBP", "price", "EURGBP=X", decimals=4),
+    TapeSpec("DXY", "price", "DXY", decimals=2),
     TapeSpec("Ethereum", "price", "ETH-USD", unit="$", decimals=0),
     TapeSpec("US 2y", "observation", "DGS2", unit="%", change="abs"),
     TapeSpec("US 30y", "observation", "DGS30", unit="%", change="abs"),
@@ -65,7 +66,7 @@ MORE: list[TapeSpec] = [
         change="abs",
         frequency="monthly",
     ),
-    TapeSpec("ECB deposit rate", "observation", "ECB_DFR", unit="%", change="abs"),
+    TapeSpec("ECB deposit rate", "observation", "ECB_DEPO", unit="%", change="abs"),
     TapeSpec(
         "EZ core HICP y/y",
         "observation",

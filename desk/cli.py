@@ -107,6 +107,27 @@ def positions(
 
 
 @app.command()
+def decide(verbose: bool = False) -> None:
+    """Run regime -> scores -> rules -> decisions -> paper broker for today."""
+    _log(verbose)
+    from desk.jobs import run_decisions
+
+    typer.echo(json.dumps(run_decisions(get_settings()), indent=1, default=str))
+
+
+@app.command("kill-conditions")
+def kill_conditions_cmd() -> None:
+    """Attach docs/seed/kill_conditions_*.yaml to open positions."""
+    from desk.db import init_db, session_scope
+    from desk.kill_conditions import load_seed_kill_conditions
+
+    settings = get_settings()
+    init_db(settings)
+    with session_scope(settings) as s:
+        typer.echo(json.dumps(load_seed_kill_conditions(s, settings), indent=1))
+
+
+@app.command()
 def backup() -> None:
     """Write a consistent SQLite backup to data/backups/."""
     from desk.jobs import backup_sqlite

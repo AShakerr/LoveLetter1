@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}desk · {{ d.action }} {{ inst.ticker }}{% endblock %}
+{% block content %}
+{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+{% set rj = d.rules_json or {} %}
+<section class="toolbar">
+  <a href="/decisions?date={{ d.date }}" class="small">← decisions {{ d.date }}</a>
+  <span class="action {{ d.action }}">{{ d.action }}</span> <strong>{{ inst.ticker }}</strong> <span class="muted">{{ inst.name }}</span>
+  <span class="pill status-{{ d.user_status }}">{{ d.user_status }}</span>
+  <span class="muted small">logged {{ d.created_at.strftime('%Y-%m-%d %H:%M') }} UTC · #{{ d.id }}</span>
+</section>
+
+<section class="cols">
+  <div class="reasoning">{{ d.reasoning_md | markdown | safe }}</div>
+  <div>
+    <h2>Your response</h2>
+    {% if d.user_status == 'pending' %}
+    <form method="post" action="/decisions/{{ d.id }}/respond" class="respond">
+      <textarea name="note" rows="3" placeholder="note (optional): what you did, at what price, or why not"></textarea>
+      <div class="btns">
+        <button type="submit" name="status" value="executed">Executed</button>
+        <button type="submit" name="status" value="skipped" class="secondary">Skipped</button>
+        <button type="submit" name="status" value="overridden" class="secondary">Overridden</button>
+      </div>
+      <p class="muted small">Executed updates the confirmed positions (a BUY opens a position at the latest close with the kill condition attached; SELL closes; TRIM reduces). The decision text itself is never edited.</p>
+    </form>
+    {% else %}
+    <p><span class="pill status-{{ d.user_status }}">{{ d.user_status }}</span>{% if d.executed_at %} at {{ d.executed_at.strftime('%Y-%m-%d %H:%M') }} UTC{% endif %}</p>
+    {% if d.user_note %}<blockquote>{{ d.user_note }}</blockquote>{% endif %}
+    {% endif %}
+
+    {% if score %}
+    <h2>Factor inputs</h2>
+    <details><summary class="small muted">raw inputs JSON</summary><pre class="json">{{ score.inputs_json | tojson(indent=1) }}</pre></details>
+    {% endif %}
+    {% if rj.flags %}
+    <h2>Rules fired</h2>
+    {% for f in rj.flags %}<div class="rule {{ f.severity }}"><span class="pill {{ f.severity }}">{{ f.severity }}</span> <code>{{ f.rule }}</code><br><span class="small">{{ f.summary }}</span></div>{% endfor %}
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

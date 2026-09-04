@@ -26,6 +26,7 @@ from sqlmodel import Session, select
 from desk.config import Settings, get_settings
 from desk.llm import TextCompleter, parse_json_text
 from desk.models import HouseView, Report
+from desk.models import Observation as ObservationRow
 from desk.sources.base import utcnow
 
 log = logging.getLogger(__name__)
@@ -265,6 +266,36 @@ def write_report(
     session.refresh(report)
     if extraction is None:
         return report
+    for row in extraction.market_performance_table:
+        name = row.get("name")
+        if not name:
+            continue
+        for field, series in (("pe", f"PE:{name}"), ("level", f"LEVEL:{name}")):
+            val = row.get(field)
+            if val is None:
+                continue
+            try:
+                val = float(val)
+            except (TypeError, ValueError):
+                continue
+            exists = session.exec(
+                select(ObservationRow).where(
+                    ObservationRow.series == series,
+                    ObservationRow.date == report.date,
+                    ObservationRow.source == "safra",
+                )
+            ).first()
+            if exists is None:
+                session.add(
+                    ObservationRow(
+                        series=series,
+                        date=report.date,
+                        value=val,
+                        source="safra",
+                        fetched_at=utcnow(),
+                        meta={"report_id": report.id, "kind": report.kind},
+                    )
+                )
     tactical = report.kind in TACTICAL_KINDS
     for v in extraction.views:
         prior = _prior_view(session, report, v.scope, v.key, tactical)

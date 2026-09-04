@@ -1,7 +1,7 @@
 """ECB Data Portal (SDMX-JSON). Raw payload: {"<OUR_SERIES_NAME>": <sdmx json>}
 
 Series mapping (ours -> ECB key):
-    ECB_DFR        FM.B.U2.EUR.4F.KR.DFR.LEV        deposit facility rate, business daily
+    ECB_DEPO        FM.B.U2.EUR.4F.KR.DFR.LEV        deposit facility rate, business daily
     EZ_HICP        ICP.M.U2.N.000000.4.ANR          headline HICP, y/y %
     EZ_HICP_CORE   ICP.M.U2.N.XEF000.4.ANR          HICP ex energy & food, y/y %
 """
@@ -16,7 +16,7 @@ from desk.sources.base import Fetcher, Observation, http_get_json
 SOURCE = "ecb"
 BASE_URL = "https://data-api.ecb.europa.eu/service/data"
 SERIES = {
-    "ECB_DFR": "FM/B.U2.EUR.4F.KR.DFR.LEV",
+    "ECB_DEPO": "FM/B.U2.EUR.4F.KR.DFR.LEV",
     "EZ_HICP": "ICP/M.U2.N.000000.4.ANR",
     "EZ_HICP_CORE": "ICP/M.U2.N.XEF000.4.ANR",
 }

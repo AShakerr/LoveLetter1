@@ -14,7 +14,7 @@
       <a href="/" class="{% if active == 'tape' %}active{% endif %}">Tape</a>
       <a href="/portfolio" class="{% if active == 'portfolio' %}active{% endif %}">Portfolio</a>
       <a href="/house-views" class="{% if active == 'house' %}active{% endif %}">House views</a>
-      <a class="disabled" title="phase 3">Decisions</a>
+      <a href="/decisions" class="{% if active == 'decisions' %}active{% endif %}">Decisions</a>
       <a class="disabled" title="phase 4">Track record</a>
     </nav>
     <div class="clock muted">{{ now.strftime('%a %d %b %Y %H:%M') }} {{ tz }}</div>

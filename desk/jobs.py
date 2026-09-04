@@ -22,6 +22,7 @@ def run_daily(
     settings: Settings | None = None,
     fetchers: list[Fetcher] | None = None,
     only: set[str] | None = None,
+    decide: bool = True,
 ) -> list[dict]:
     """Fetch every source, persist, and log a fetch_runs row per source. Returns a summary list."""
     settings = settings or get_settings()
@@ -51,7 +52,67 @@ def run_daily(
                 }
             )
             log.info("%s: %s (%d rows) %s", f.name, outcome.status, rows, outcome.error or "")
+    if decide:
+        summary.append(run_decisions(settings))
     return summary
+
+
+def run_decisions(settings: Settings | None = None) -> dict:
+    """Regime -> scores -> rules -> decisions -> paper broker. Logged as a fetch_runs row named 'decisions'."""
+    from desk.decisions import run_pipeline
+    from desk.models import FetchRun
+
+    settings = settings or get_settings()
+    init_db(settings)
+    started = datetime.utcnow()
+    with session_scope(settings) as session:
+        try:
+            res = run_pipeline(session, settings)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("decision pipeline failed")
+            session.add(
+                FetchRun(
+                    source="decisions",
+                    started_at=started,
+                    finished_at=datetime.utcnow(),
+                    status="failed",
+                    rows=0,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            )
+            session.commit()
+            return {
+                "source": "decisions",
+                "status": "failed",
+                "rows": 0,
+                "observations": 0,
+                "error": str(exc),
+                "counts": {},
+            }
+        note = "; ".join(res.notes) or None
+        session.add(
+            FetchRun(
+                source="decisions",
+                started_at=started,
+                finished_at=datetime.utcnow(),
+                status="ok",
+                rows=res.created,
+                error=note,
+            )
+        )
+        session.commit()
+        return {
+            "source": "decisions",
+            "status": "ok",
+            "rows": res.created,
+            "observations": len(res.scores),
+            "error": note,
+            "counts": {
+                "decisions": res.created,
+                "flags": len(res.flags),
+                "paper_fills": res.paper_fills,
+            },
+        }
 
 
 def process_inbox(settings: Settings | None = None, completer=None) -> dict[str, list[dict]]:

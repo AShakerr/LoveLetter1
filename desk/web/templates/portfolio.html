@@ -62,7 +62,8 @@
     <tbody>
     {% for p in view.positions %}
       <tr>
-        <td><strong>{{ p.instrument.ticker }}</strong></td>
+        <td><strong>{{ p.instrument.ticker }}</strong>{% if p.instrument.composition_confirmed is sameas false %}
+          <form method="post" action="/instruments/confirm-composition" style="display:inline"><input type="hidden" name="ticker" value="{{ p.instrument.ticker }}"><button type="submit" class="secondary tiny" title="Composition unconfirmed: limit rules only flag until you confirm">confirm composition</button></form>{% endif %}</td>
         <td class="small">{{ p.instrument.name }}</td>
         <td>{{ p.position.pot.value }}</td>
         <td class="mono">{{ p.position.quantity | num(2) }}</td>

@@ -67,3 +67,31 @@ tr.dir-upgrade td:nth-child(7) { color: var(--up); } tr.dir-downgrade td:nth-chi
 .stance.most_preferred, .stance.overweight, .stance.buy, .stance.strong_buy { background: #1a3a24; color: var(--up); }
 .stance.least_preferred, .stance.underweight, .stance.sell { background: #3a1a1a; color: var(--down); }
 ul.risks { padding-left: 18px; } ul.risks li { margin-bottom: 6px; }
+
+/* phase 3 */
+.banner.regime { border-left-color: var(--accent); }
+.action { display: inline-block; padding: 2px 10px; border-radius: 6px; font-weight: 700; font-size: 12px; letter-spacing: .04em; }
+.action.BUY, .action.ADD { background: #1a3a24; color: var(--up); }
+.action.SELL { background: #3a1a1a; color: var(--down); }
+.action.TRIM { background: #3a2f12; color: var(--warn); }
+.action.HOLD { background: var(--line); color: var(--fg); }
+.action.AVOID { background: #2a2a2a; color: var(--muted); }
+.pill.mandatory { background: #3a1a1a; color: var(--down); border: 1px solid var(--down); }
+.pill.review { background: #3a2f12; color: var(--warn); }
+.pill.band-act { background: #1a3a24; color: var(--up); } .pill.band-candidate { background: #3a2f12; color: var(--warn); }
+.pill.band-watch { background: var(--line); } .pill.band-avoid { background: #2a2a2a; color: var(--muted); }
+.pill.status-pending { background: var(--line); } .pill.status-executed { background: #1a3a24; color: var(--up); }
+.pill.status-skipped { background: #2a2a2a; color: var(--muted); } .pill.status-overridden { background: #3a2f12; color: var(--warn); }
+tr.has-mandatory td:first-child { box-shadow: inset 4px 0 var(--down); }
+.reasoning { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 18px; }
+.reasoning table { border-collapse: collapse; font-size: 13px; } .reasoning th, .reasoning td { border-bottom: 1px solid var(--line); padding: 4px 8px; text-align: left; }
+.reasoning h1 { font-size: 18px; } .reasoning h2 { text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--fg); margin-top: 18px; }
+.reasoning blockquote { border-left: 3px solid var(--warn); margin: 0; padding: 4px 10px; color: var(--warn); }
+.respond textarea { width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+.respond .btns { display: flex; gap: 8px; margin-top: 8px; }
+.rule { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.rule.mandatory code { color: var(--down); }
+pre.json { font-size: 11px; max-height: 400px; overflow: auto; background: var(--bg); padding: 8px; border-radius: 6px; }
+button.tiny { font-size: 10px; padding: 2px 6px; margin-left: 6px; }
+tr.diff td { background: rgba(210,153,34,.08); }
+.toolbar a.active { color: var(--fg); font-weight: 600; }

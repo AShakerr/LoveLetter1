@@ -59,7 +59,7 @@ def test_ecb_sdmx_parse(settings):
     pairs = parse_sdmx(raw["EZ_HICP"])
     assert pairs and all(isinstance(v, float) for _, v in pairs)
     obs = EcbFetcher(settings=settings).parse(raw)
-    assert {o.series for o in obs} == {"ECB_DFR", "EZ_HICP", "EZ_HICP_CORE"}
+    assert {o.series for o in obs} == {"ECB_DEPO", "EZ_HICP", "EZ_HICP_CORE"}
     hicp = max((o for o in obs if o.series == "EZ_HICP"), key=lambda o: o.date)
     assert hicp.date.day == 1 and hicp.meta["period"].count("-") == 1
     assert period_to_date("2026-07") == date(2026, 7, 1)

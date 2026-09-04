@@ -122,4 +122,7 @@ def load_all_seeds(session: Session, settings: Settings | None = None) -> dict[s
     reg = sorted(d.glob("regime_*.json"))
     if reg:
         out["regime"] = load_seed_regime(session, reg[-1])
+    from desk.kill_conditions import load_seed_kill_conditions
+
+    out["kill_conditions"] = load_seed_kill_conditions(session, settings)
     return out

@@ -12,3 +12,10 @@ stop_loss:
   private: null
 max_buy_size_per_decision: 0.05
 score_bands: {act: 75, candidate: 60, watch: 45}
+review:
+  score_decay_points: 15       # score fell by more than this over 30 days
+  score_decay_days: 30
+  score_floor: 45              # or fell below this
+  momentum_sentiment_floor: -0.15
+  stale_days: 7
+  stale_days_manual: 14

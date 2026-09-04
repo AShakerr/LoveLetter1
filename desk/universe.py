@@ -40,7 +40,14 @@ def sync_instruments(session: Session, items: list[dict] | None = None) -> int:
             isin=it.get("isin"),
         )
         if row is None:
-            session.add(Instrument(ticker=it["ticker"], **payload))
+            cc = it.get("composition_confirmed")
+            session.add(
+                Instrument(
+                    ticker=it["ticker"],
+                    composition_confirmed=None if cc is None else bool(cc),
+                    **payload,
+                )
+            )
             changed += 1
         else:
             dirty = False
@@ -48,9 +55,21 @@ def sync_instruments(session: Session, items: list[dict] | None = None) -> int:
                 if getattr(row, k) != v:
                     setattr(row, k, v)
                     dirty = True
+            # the composition flag is user state once set; only initialise it from the universe file
+            cc = it.get("composition_confirmed")
+            if cc is not None and row.composition_confirmed is None:
+                row.composition_confirmed = bool(cc)
+                dirty = True
             if dirty:
                 session.add(row)
                 changed += 1
+    # instruments dropped from the universe are never recommended again (kept for history)
+    known = {it["ticker"] for it in items}
+    for row in session.exec(select(Instrument)).all():
+        if row.ticker not in known and row.tradable:
+            row.tradable = False
+            session.add(row)
+            changed += 1
     session.commit()
     return changed
 

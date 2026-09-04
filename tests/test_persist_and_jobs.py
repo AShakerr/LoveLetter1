@@ -53,7 +53,7 @@ class Stub(Fetcher):
 
 
 def test_run_daily_records_fetch_runs(settings):
-    summary = run_daily(settings, fetchers=[Stub(settings)])
+    summary = run_daily(settings, fetchers=[Stub(settings)], decide=False)
     assert summary == [
         {
             "source": "stub",

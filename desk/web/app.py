@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo
 
+import markdown as md
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -17,15 +18,19 @@ from fastapi.templating import Jinja2Templates
 from sqlmodel import select
 
 from desk import __version__
+from desk.broker import PaperBroker
 from desk.config import Settings, get_settings
 from desk.db import init_db, session_scope
+from desk.decisions import list_decisions, respond
 from desk.houseviews import change_log, latest_headline, latest_views
 from desk.houseviews import reports as list_reports
 from desk.houseviews import risks as list_risks
 from desk.ingest.revolut import confirm_batch, discard_batch, pending_batches
-from desk.jobs import process_inbox, run_daily
-from desk.models import FetchRun, Instrument
+from desk.jobs import process_inbox, run_daily, run_decisions
+from desk.models import Decision, FetchRun, Instrument, RuleFired, Score
 from desk.portfolio import build_portfolio
+from desk.regime import latest_regime
+from desk.rules import RuleConfig
 from desk.scheduler import build_scheduler
 from desk.seed import load_all_seeds
 from desk.tape import MORE, TAPE, latest_runs, load_tape
@@ -59,6 +64,9 @@ def _fmt_pct(v: float | None, decimals: int = 1) -> str:
 templates.env.filters["num"] = _fmt_num
 templates.env.filters["change"] = _fmt_change
 templates.env.filters["pct"] = _fmt_pct
+templates.env.filters["markdown"] = lambda text: md.markdown(
+    text or "", extensions=["tables", "fenced_code"]
+)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -132,15 +140,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return _render_dashboard(request, flash=f"Run failed: {exc}", partial=True)
         finally:
             _run_lock.release()
-        ok = sum(1 for s in summary if s["status"] == "ok")
-        cached = sum(1 for s in summary if s["status"] == "cached")
-        failed = [s["source"] for s in summary if s["status"] == "failed"]
-        skipped = [s["source"] for s in summary if s["status"] == "skipped"]
+        sources = [s for s in summary if s["source"] != "decisions"]
+        dec = next((s for s in summary if s["source"] == "decisions"), None)
+        ok = sum(1 for s in sources if s["status"] == "ok")
+        cached = sum(1 for s in sources if s["status"] == "cached")
+        failed = [s["source"] for s in sources if s["status"] == "failed"]
+        skipped = [s["source"] for s in sources if s["status"] == "skipped"]
         msg = f"Run finished: {ok} ok, {cached} from cache"
         if failed:
             msg += f", failed: {', '.join(failed)}"
         if skipped:
             msg += f", skipped: {', '.join(skipped)}"
+        if dec is not None:
+            msg += (
+                f"; decisions: {dec['rows']} new"
+                if dec["status"] == "ok"
+                else f"; decisions failed: {dec.get('error')}"
+            )
         return _render_dashboard(request, flash=msg, partial=True)
 
     def _base_ctx(request: Request, **extra):
@@ -229,6 +245,133 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         n = sum(1 for r in hv if r.get("status") == "ok")
         return RedirectResponse(
             f"/house-views?flash={quote_plus(f'Seed loaded: {n} new reports')}", status_code=303
+        )
+
+    @app.post("/instruments/confirm-composition")
+    def confirm_composition(ticker: str = Form(...)):
+        with session_scope(settings) as session:
+            inst = session.exec(select(Instrument).where(Instrument.ticker == ticker)).first()
+            if inst is not None:
+                inst.composition_confirmed = True
+                session.add(inst)
+                session.commit()
+        return RedirectResponse(
+            f"/portfolio?flash={quote_plus(f'{ticker}: composition confirmed; limit rules now mandatory')}",
+            status_code=303,
+        )
+
+    @app.get("/decisions", response_class=HTMLResponse)
+    def decisions(
+        request: Request,
+        date: str | None = None,
+        status: str | None = None,
+        flash: str | None = None,
+    ):
+        with session_scope(settings) as session:
+            day = datetime.fromisoformat(date).date() if date else None
+            rows = list_decisions(session, day, status)
+            if day is None and rows:
+                day = rows[0].date
+                rows = [r for r in rows if r.date == day]
+            instruments = {i.id: i for i in session.exec(select(Instrument)).all()}
+            regime = latest_regime(session)
+            last_run = session.exec(
+                select(FetchRun)
+                .where(FetchRun.source == "decisions")
+                .order_by(FetchRun.started_at.desc())
+                .limit(1)
+            ).first()
+            gflags = [
+                r
+                for r in session.exec(
+                    select(RuleFired).where(
+                        RuleFired.date == (day or datetime.now().date()),
+                        RuleFired.instrument_id.is_(None),
+                    )
+                ).all()
+            ]
+            scores = (
+                list(
+                    session.exec(
+                        select(Score)
+                        .where(Score.date == (day or datetime.now().date()))
+                        .order_by(Score.total.desc())
+                    ).all()
+                )
+                if day or True
+                else []
+            )
+            decided = {r.instrument_id for r in rows}
+            candidates = [
+                sc for sc in scores if 60 <= sc.total < 75 and sc.instrument_id not in decided
+            ]
+            view = build_portfolio(session, settings)
+            broker = PaperBroker()
+            paper = broker.compare(session, view) if broker.is_seeded(session) else []
+            fills = broker.fills(session, 20)
+            dates = sorted({d.date for d in session.exec(select(Decision)).all()}, reverse=True)[
+                :30
+            ]
+            cfg = RuleConfig.load(settings)
+            return templates.TemplateResponse(
+                request,
+                "decisions.html",
+                _base_ctx(
+                    request,
+                    rows=rows,
+                    day=day,
+                    instruments=instruments,
+                    regime=regime,
+                    last_run=last_run,
+                    gflags=gflags,
+                    candidates=candidates,
+                    paper=paper,
+                    fills=fills,
+                    dates=dates,
+                    view=view,
+                    status_filter=status,
+                    flash=flash,
+                    active="decisions",
+                    cfg=cfg,
+                ),
+            )
+
+    @app.post("/decisions/run")
+    def decisions_run():
+        res = run_decisions(settings)
+        msg = f"Decisions: {res['status']}, {res['rows']} new" + (
+            f" — {res['error']}" if res.get("error") else ""
+        )
+        return RedirectResponse(f"/decisions?flash={quote_plus(msg)}", status_code=303)
+
+    @app.get("/decisions/{decision_id}", response_class=HTMLResponse)
+    def decision_detail(request: Request, decision_id: int, flash: str | None = None):
+        with session_scope(settings) as session:
+            d = session.get(Decision, decision_id)
+            if d is None:
+                return HTMLResponse("not found", status_code=404)
+            inst = session.get(Instrument, d.instrument_id)
+            score = session.get(Score, d.score_id) if d.score_id else None
+            return templates.TemplateResponse(
+                request,
+                "decision.html",
+                _base_ctx(request, d=d, inst=inst, score=score, flash=flash, active="decisions"),
+            )
+
+    @app.post("/decisions/{decision_id}/respond")
+    def decision_respond(decision_id: int, status: str = Form(...), note: str = Form("")):
+        with session_scope(settings) as session:
+            d = session.get(Decision, decision_id)
+            if d is None:
+                return HTMLResponse("not found", status_code=404)
+            try:
+                respond(session, d, status, note or None, settings)
+            except ValueError as exc:
+                return RedirectResponse(
+                    f"/decisions/{decision_id}?flash={quote_plus(str(exc))}", status_code=303
+                )
+        return RedirectResponse(
+            f"/decisions/{decision_id}?flash={quote_plus(f'Marked {status}')}", status_code=303
         )
 
     @app.get("/api/runs")

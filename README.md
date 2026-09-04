@@ -9,7 +9,7 @@ It does not trade and it is not investment advice.
 |---|---|---|
 | 1 | Skeleton, all fetchers with recorded fixtures, daily scheduler, tape dashboard | **done** |
 | 2 | Safra PDF extraction, seed house views, Revolut screenshot ingestion, portfolio view | **done** |
-| 3 | Regime, conviction score, rules engine, decisions | not started |
+| 3 | Regime, conviction score, rules engine, decisions, paper broker | **done** (f_regime waits for `config/regime_fit.yaml`) |
 | 4 | Self-scoring, weekly digest, Claude-written reasoning | not started |
 
 ## Run locally
@@ -20,7 +20,8 @@ cp .env.example .env            # fill in keys; basic auth user/pass are require
 uv run desk init-db
 uv run desk load-fixtures       # offline demo data, tagged source='fixture:*'
 uv run desk seed                # August house views, 4 Sep positions snapshot, regime snapshot
-uv run desk fetch               # live data (needs network + keys)
+uv run desk fetch               # live data (needs network + keys); also runs the decision pipeline
+uv run desk decide              # regime -> scores -> rules -> decisions -> paper broker, for today only
 uv run desk serve               # http://localhost:8000
 uv run pytest                   # network is disabled for every test
 ```
@@ -64,7 +65,7 @@ Put Caddy in front for TLS (`Caddyfile.example`). Backups: `sqlite3 .backup` nig
 |---|---|---|
 | yfinance | daily OHLCV for everything in `config/universe.yaml` | none |
 | FRED | DFF, DGS2, DGS10, DGS30, CPIAUCSL, CPILFESL, T10Y2Y, UNRATE | `FRED_API_KEY` |
-| ECB Data Portal | ECB_DFR, EZ_HICP, EZ_HICP_CORE | none |
+| ECB Data Portal | ECB_DEPO, EZ_HICP, EZ_HICP_CORE | none |
 | Alpha Vantage NEWS_SENTIMENT | per-ticker and per-topic daily sentiment; 25 calls/day budgeted in `data/cache` | `ALPHAVANTAGE_API_KEY` |
 | GDELT DOC 2.0 | tone + volume for six fixed queries | none |
 | CNN Fear & Greed | CNN_FEAR_GREED (optional, unofficial) | none |
@@ -84,10 +85,34 @@ Record real payloads with:
 uv run python scripts/record_fixtures.py
 ```
 
+## Decisions (phase 3)
+
+The daily job ends with `desk/decisions.py`: `desk/regime.py` labels the world on four dimensions,
+`desk/score.py` scores every tradable instrument on six factors (fixed weights 25/20/15/15/15/10),
+`desk/rules.py` fires MANDATORY (stop_loss, max_position, max_theme, thesis_invalidated,
+house_downgrade_to_least) and REVIEW (score_decay, momentum_break, stale_data, concentration_warning,
+thesis_unevaluable) rules, and decisions are written append-only with a markdown argument: regime label,
+score table, rules fired, kill condition, and what would reverse it. Marking a decision executed on its
+page updates the confirmed positions; the decision text is never edited.
+
+- `config/regime_fit.yaml` (user-supplied) drives f_regime = 0.6 x fit(current) + 0.4 x fit(reverse).
+  Until it exists, scores are marked provisional and f_regime contributes 0.
+- `docs/seed/kill_conditions_<date>.yaml` (user-supplied) attaches a thesis and a predicate to positions and
+  to BUY decisions for named candidates. The predicate DSL is documented in `desk/predicates.py`
+  (house_view, observation, close, change_pct, theme_weight, days_since, avg_cost, sentiment). A predicate
+  the DSL cannot evaluate becomes a REVIEW flag showing the thesis text.
+- A pot with `composition_confirmed: false` (the Revolut commodities pot) turns max_position / max_theme
+  into a REVIEW flag "confirm pot composition"; the Portfolio page has the confirm button, after which the
+  TRIM is mandatory.
+- `desk/broker.py`: the PaperBroker mirrors every decision at the latest close into a paper book seeded from
+  the confirmed positions; the Decisions page shows "Paper vs actual". `RevolutBroker` is a stub that raises
+  NotImplementedError because Revolut has no API.
+
 ## Layout
 
 ```
-desk/            package: config, models, db, sources/, persist, jobs, scheduler, tape, web/, cli
+desk/            config, models, db, sources/, persist, jobs, scheduler, tape, ingest/, portfolio, houseviews,
+                 regime, regime_fit, score, predicates, rules, decisions, broker, kill_conditions, web/, cli
 config/          universe.yaml, limits.yaml, manual_observations.yaml (regime_fit.yaml in phase 3)
 docs/BRIEF.md    the spec; docs/seed/ seeded house views, positions and regime; docs/seasonality_evidence.md
 prompts/         Claude extraction prompts (Safra PDFs, Revolut screenshots)

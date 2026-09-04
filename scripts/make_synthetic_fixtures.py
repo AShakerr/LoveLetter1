@@ -24,6 +24,7 @@ ANCHORS = {  # last close, daily vol
     "^GDAXI": (25600.0, 0.010),
     "^STOXX50E": (6150.0, 0.010),
     "^VIX": (14.3, 0.05),
+    "DXY": (97.6, 0.004),
     "GC=F": (4180.0, 0.009),
     "CL=F": (91.2, 0.02),
     "BZ=F": (95.8, 0.02),
@@ -180,7 +181,7 @@ def ecb() -> dict:
     bdays = [d for d in (END - timedelta(days=i) for i in range(30)) if d.weekday() < 5][::-1]
     dfr = [2.00 if d < date(2026, 6, 11) else 2.25 for d in bdays]
     return {
-        "ECB_DFR": sdmx("B.U2.EUR.4F.KR.DFR.LEV", [d.isoformat() for d in bdays], dfr, "B"),
+        "ECB_DEPO": sdmx("B.U2.EUR.4F.KR.DFR.LEV", [d.isoformat() for d in bdays], dfr, "B"),
         "EZ_HICP": sdmx("M.U2.N.000000.4.ANR", months, hicp, "M"),
         "EZ_HICP_CORE": sdmx("M.U2.N.XEF000.4.ANR", months, core, "M"),
     }

@@ -43,6 +43,9 @@ class Instrument(SQLModel, table=True):
     # symbol used at the data source when it differs from the display ticker (e.g. VUSA -> VUSA.AS)
     source_symbol: str | None = None
     isin: str | None = None
+    # None for ordinary instruments. False for pots whose composition the user has not confirmed yet:
+    # while False, max_position / max_theme raise a REVIEW flag instead of a MANDATORY TRIM.
+    composition_confirmed: bool | None = None
 
 
 class Price(SQLModel, table=True):
@@ -215,3 +218,29 @@ class Regime(SQLModel, table=True):
     oil_state: str
     vol_state: str
     inputs_json: dict | None = Field(default=None, sa_column=Column(JSON))
+
+
+class PaperPosition(SQLModel, table=True):
+    """The paper book: what the portfolio would look like if every decision had been executed."""
+
+    __tablename__ = "paper_positions"
+    id: int | None = Field(default=None, primary_key=True)
+    instrument_id: int = Field(foreign_key="instruments.id", index=True, unique=True)
+    quantity: float
+    avg_cost: float
+    currency: str
+    updated_at: dt.datetime
+
+
+class PaperFill(SQLModel, table=True):
+    __tablename__ = "paper_fills"
+    id: int | None = Field(default=None, primary_key=True)
+    decision_id: int | None = Field(default=None, foreign_key="decisions.id", index=True)
+    instrument_id: int = Field(foreign_key="instruments.id", index=True)
+    date: dt.date
+    side: str  # buy | sell
+    quantity: float
+    price: float
+    currency: str
+    note: str | None = None
+    created_at: dt.datetime

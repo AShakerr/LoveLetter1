@@ -4,17 +4,22 @@
 # source_symbol: the yfinance symbol when it differs from the display ticker.
 # price_source: yfinance (default) | none   (private assets have no daily price)
 # news_sentiment: true -> Alpha Vantage ticker sentiment is fetched (counts against the 25/day budget)
+# composition_confirmed: false -> a pot whose contents are unknown; limit rules only flag until confirmed
+# valuation: how f_valuation is computed (docs/BRIEF.md section 7):
+#   target_key: Safra index/commodity target key, index_ticker: the index priced against it,
+#   pe_series: observation series holding the index P/E (written from Safra performance tables)
 instruments:
   # ---- held (positions confirmed in phase 2) ---------------------------------------------
   - {ticker: TSLA, name: Tesla Inc, kind: stock, currency: USD, exchange: NASDAQ, tradable: true,
      theme: "EV / autonomy", sector: Consumer Discretionary, region: USA, news_sentiment: true}
   - {ticker: VUSA, name: Vanguard S&P 500 UCITS ETF Dist, isin: IE00B3XXRP09, kind: etf, currency: EUR,
      exchange: Xetra, tradable: true, theme: "diversified core", sector: Broad, region: USA,
-     source_symbol: VUSA.DE}
+     source_symbol: VUSA.DE, valuation: {target_key: "S&P 500 Dec-26", index_ticker: "^GSPC", pe_series: "PE:S&P 500"}}
   # Identifiers from docs/seed/positions_2026-09-04.json. X9I1's ISIN still needs confirming in Revolut.
   - {ticker: X9I1, name: Amundi MSCI Emerging Markets Swap UCITS ETF USD Acc, isin: LU1681045453, kind: etf,
      currency: EUR, exchange: Xetra, tradable: true, theme: "emerging markets", sector: Broad,
-     region: Emerging Markets, source_symbol: X9I1.DE}
+     region: Emerging Markets, source_symbol: X9I1.DE,
+     valuation: {target_key: "MSCI EM Dec-26", pe_series: "PE:MSCI Emerging Markets"}}
   - {ticker: 4COP, name: Global X Copper Miners UCITS ETF USD Acc, isin: IE0003Z9E2Y3, kind: etf, currency: EUR,
      exchange: Xetra, tradable: true, theme: "copper / electrification", sector: Materials, region: Global,
      source_symbol: 4COP.DE}
@@ -22,7 +27,8 @@ instruments:
      tradable: true, theme: "space / private", sector: Industrials, region: USA, price_source: none}
   - {ticker: COMMODITIES_POT, name: Revolut commodities pot (composition to confirm), kind: commodity,
      currency: USD, exchange: null, tradable: true, theme: gold, sector: Commodities, region: Global,
-     price_source: none}
+     price_source: none, composition_confirmed: false,
+     valuation: {target_key: "Gold Dec-26", index_ticker: "GC=F"}}
   - {ticker: ROBO_ADVISOR, name: Revolut Robo-Advisor, kind: other, currency: USD, tradable: true,
      theme: "diversified core", sector: Broad, region: Global, price_source: none}
   - {ticker: UNKNOWN_BROKERAGE, name: "Brokerage lines behind 'Show more' (identify)", kind: other, currency: USD,
@@ -34,13 +40,14 @@ instruments:
      theme: "AI capex", sector: Information Technology, region: USA, news_sentiment: true}
   - {ticker: VWCE, name: Vanguard FTSE All-World UCITS ETF (acc, EUR), kind: etf, currency: EUR,
      exchange: Xetra, tradable: true, theme: "diversified core", sector: Broad, region: Global,
-     source_symbol: VWCE.DE}
+     source_symbol: VWCE.DE, valuation: {target_key: "MSCI World Dec-26", pe_series: "PE:S&P 500"}}
   # ---- benchmarks, futures, fx, crypto reference (not tradable as such) --------------------
   - {ticker: "^GSPC", name: S&P 500, kind: index, currency: USD, tradable: false, region: USA}
   - {ticker: "^NDX", name: Nasdaq 100, kind: index, currency: USD, tradable: false, region: USA}
   - {ticker: "^GDAXI", name: DAX, kind: index, currency: EUR, tradable: false, region: Germany}
   - {ticker: "^STOXX50E", name: Euro Stoxx 50, kind: index, currency: EUR, tradable: false, region: Euro area}
   - {ticker: "^VIX", name: CBOE VIX, kind: index, currency: USD, tradable: false, region: USA}
+  - {ticker: DXY, name: US Dollar Index, kind: index, currency: USD, tradable: false, source_symbol: DX-Y.NYB}
   - {ticker: "GC=F", name: Gold futures, kind: commodity, currency: USD, tradable: false, theme: gold}
   - {ticker: "CL=F", name: WTI crude futures, kind: commodity, currency: USD, tradable: false, theme: energy}
   - {ticker: "BZ=F", name: Brent crude futures, kind: commodity, currency: USD, tradable: false, theme: energy}

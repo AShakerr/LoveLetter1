@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}desk · decisions{% endblock %}
+{% block content %}
+{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+
+<section class="toolbar">
+  <form method="post" action="/decisions/run"><button type="submit">Run decisions</button></form>
+  <span class="muted small">regime → scores → rules → decisions → paper broker. Decisions are logged before you act; nothing is traded.</span>
+  {% if dates %}<span class="muted small">day:
+    {% for dd in dates %}<a href="/decisions?date={{ dd }}" {% if dd == day %}class="active"{% endif %}>{{ dd }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</span>{% endif %}
+</section>
+
+{% if regime %}
+<section>
+  <div class="banner regime"><strong>Regime {{ regime.date }}:</strong> {{ regime.label }}
+    <span class="muted small">· inflation {{ regime.inflation_state }} · policy {{ regime.policy_state }} · oil {{ regime.oil_state }} · vol {{ regime.vol_state }}</span></div>
+  {% if rows and (rows | map(attribute='rules_json') | selectattr('provisional') | list) %}<div class="warn-line">⚠ Scores are provisional: config/regime_fit.yaml is missing, so f_regime contributes 0 of its 20 points.</div>{% endif %}
+  {% if rows and rows[0].rules_json and rows[0].rules_json.basis and rows[0].rules_json.basis.startswith('pending') %}<div class="warn-line">⚠ Decisions were made on an unconfirmed position snapshot ({{ rows[0].rules_json.basis[8:] }}).</div>{% endif %}
+  {% if last_run and last_run.error and 'provisional' not in last_run.error %}<div class="warn-line">⚠ {{ last_run.error }}</div>{% endif %}
+  {% for g in gflags %}<div class="warn-line">⚠ <code>{{ g.rule }}</code> {{ g.detail_json.summary }}</div>{% endfor %}
+</section>
+{% endif %}
+
+<section>
+  <h2>Decisions {% if day %}<span class="muted">· {{ day }}</span>{% endif %}
+    <span class="muted small" style="text-transform:none;letter-spacing:0">
+      · <a href="/decisions{% if day %}?date={{ day }}{% endif %}">all</a>
+      {% for st in ['pending','executed','skipped','overridden'] %}· <a href="/decisions?{% if day %}date={{ day }}&{% endif %}status={{ st }}">{{ st }}</a>{% endfor %}</span></h2>
+  {% if not rows %}<p class="muted">No decisions yet. Press <em>Run decisions</em> (needs positions and fixture or live prices).</p>{% else %}
+  <table class="runs decisions">
+    <thead><tr><th>Action</th><th>Ticker</th><th>Size</th><th>Score</th><th>Rules</th><th>Kill condition</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for d in rows %}{% set rj = d.rules_json or {} %}{% set inst = instruments[d.instrument_id] %}
+      {% set mand = rj.flags | selectattr('severity', 'equalto', 'mandatory') | list %}
+      {% set rev = rj.flags | selectattr('severity', 'equalto', 'review') | list %}
+      <tr class="act-{{ d.action }} {% if mand %}has-mandatory{% endif %}">
+        <td><span class="action {{ d.action }}">{{ d.action }}</span></td>
+        <td><a href="/decisions/{{ d.id }}"><strong>{{ inst.ticker }}</strong></a> <span class="muted small">{{ inst.name }}</span></td>
+        <td class="mono">{% if d.size_pct %}{{ d.size_pct | pct }}{% else %}—{% endif %}</td>
+        <td class="mono">{% if rj.score is not none %}{{ '%.0f' % rj.score }} <span class="pill band-{{ rj.band }}">{{ rj.band }}</span>{% if rj.provisional %}<span class="pill cached" title="regime_fit.yaml missing">prov.</span>{% endif %}{% endif %}</td>
+        <td>{% for f in mand %}<span class="pill mandatory" title="{{ f.summary }}">{{ f.rule }}</span> {% endfor %}
+            {% for f in rev %}<span class="pill review" title="{{ f.summary }}">{{ f.rule }}</span> {% endfor %}</td>
+        <td class="small muted">{{ (rj.kill_condition or '') | truncate(80) }}{% if rj.kill_predicate %}<br><code>{{ rj.kill_predicate | truncate(60) }}</code>{% endif %}</td>
+        <td><span class="pill status-{{ d.user_status }}">{{ d.user_status }}</span></td>
+        <td><a href="/decisions/{{ d.id }}" class="small">open →</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+
+{% if candidates %}
+<section>
+  <h2>Candidates <span class="muted">· score 60–74, no decision</span></h2>
+  <div class="tape compact">
+    {% for sc in candidates %}
+    <div class="card fresh-aging"><div class="label">{{ instruments[sc.instrument_id].ticker }}</div>
+      <div class="value">{{ '%.0f' % sc.total }}</div>
+      <div class="meta"><span>safra {{ '%.1f' % sc.f_safra }} · regime {{ '%.1f' % sc.f_regime }} · port {{ '%.1f' % sc.f_portfolio }} · val {{ '%.1f' % sc.f_valuation }} · mom {{ '%.1f' % sc.f_momentum }} · seas {{ '%.1f' % sc.f_season }}</span></div></div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section>
+  <h2>Paper vs actual <span class="muted">· paper book executes every decision at the close; actual is what you confirmed</span></h2>
+  {% if not paper %}<p class="muted">Paper book not seeded yet: it is seeded from the confirmed positions on the first decision run after you confirm a snapshot.</p>
+  {% else %}
+  <table class="runs">
+    <thead><tr><th>Ticker</th><th>Actual qty</th><th>Paper qty</th><th>Actual €</th><th>Paper €</th><th>Paper − actual</th></tr></thead>
+    <tbody>
+    {% for r in paper %}
+      <tr class="{% if r.diff_eur | abs > 1 %}diff{% endif %}">
+        <td><strong>{{ r.ticker }}</strong></td>
+        <td class="mono">{{ r.actual_qty | num(2) }}</td><td class="mono">{{ r.paper_qty | num(2) }}</td>
+        <td class="mono">€{{ r.actual_eur | num(0) }}</td><td class="mono">€{{ r.paper_eur | num(0) }}</td>
+        <td class="mono {% if r.diff_eur > 1 %}green{% elif r.diff_eur < -1 %}red{% endif %}">{{ '{:+,.0f}'.format(r.diff_eur) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if fills %}<h3>Paper fills</h3>
+  <table class="runs small"><thead><tr><th>Date</th><th>Decision</th><th>Side</th><th>Ticker</th><th>Qty</th><th>Price</th></tr></thead><tbody>
+    {% for f in fills %}<tr><td class="mono">{{ f.date }}</td><td><a href="/decisions/{{ f.decision_id }}">#{{ f.decision_id }}</a></td><td>{{ f.side }}</td>
+      <td>{{ instruments[f.instrument_id].ticker }}</td><td class="mono">{{ f.quantity | num(3) }}</td><td class="mono">{{ f.price | num(2) }} {{ f.currency }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+  {% endif %}
+</section>
+{% endblock %}
