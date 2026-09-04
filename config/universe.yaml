@@ -1,0 +1,45 @@
+# The instrument universe. Synced into the `instruments` table on every run.
+# kind: stock | etf | commodity | crypto | private | index | fx
+# tradable: true only for things Ahmed can actually buy on Revolut. Never recommend without it.
+# source_symbol: the yfinance symbol when it differs from the display ticker.
+# price_source: yfinance (default) | none   (private assets have no daily price)
+# news_sentiment: true -> Alpha Vantage ticker sentiment is fetched (counts against the 25/day budget)
+instruments:
+  # ---- held (positions confirmed in phase 2) ---------------------------------------------
+  - {ticker: TSLA, name: Tesla Inc, kind: stock, currency: USD, exchange: NASDAQ, tradable: true,
+     theme: "EV / autonomy", sector: Consumer Discretionary, region: USA, news_sentiment: true}
+  - {ticker: VUSA, name: Vanguard S&P 500 UCITS ETF (USD dist, EUR line), kind: etf, currency: EUR,
+     exchange: Euronext Amsterdam, tradable: true, theme: "diversified core", sector: Broad, region: USA,
+     source_symbol: VUSA.AS}
+  # TODO confirm: X9I1 and 4COP are Xetra codes from the Revolut screenshot; names must be verified in phase 2.
+  - {ticker: X9I1, name: "UCITS ETF X9I1 (name to confirm)", kind: etf, currency: EUR, exchange: Xetra,
+     tradable: true, theme: "unknown (confirm)", sector: Unknown, region: Unknown, source_symbol: X9I1.DE}
+  - {ticker: 4COP, name: "Global X Copper Miners UCITS ETF (to confirm)", kind: etf, currency: EUR,
+     exchange: Xetra, tradable: true, theme: "copper / electrification", sector: Materials, region: Global,
+     source_symbol: 4COP.DE}
+  - {ticker: SPCX, name: SpaceX (private, via Revolut), kind: private, currency: USD, exchange: null,
+     tradable: true, theme: "space / private", sector: Industrials, region: USA, price_source: none}
+  - {ticker: REVOLUT_COMMODITIES, name: Revolut commodities pot (composition to confirm), kind: commodity,
+     currency: USD, exchange: null, tradable: true, theme: gold, sector: Commodities, region: Global,
+     price_source: none}
+  # ---- watchlist ---------------------------------------------------------------------------
+  - {ticker: NVDA, name: NVIDIA Corp, kind: stock, currency: USD, exchange: NASDAQ, tradable: true,
+     theme: "AI capex", sector: Information Technology, region: USA, news_sentiment: true}
+  - {ticker: VWCE, name: Vanguard FTSE All-World UCITS ETF (acc, EUR), kind: etf, currency: EUR,
+     exchange: Xetra, tradable: true, theme: "diversified core", sector: Broad, region: Global,
+     source_symbol: VWCE.DE}
+  # ---- benchmarks, futures, fx, crypto reference (not tradable as such) --------------------
+  - {ticker: "^GSPC", name: S&P 500, kind: index, currency: USD, tradable: false, region: USA}
+  - {ticker: "^NDX", name: Nasdaq 100, kind: index, currency: USD, tradable: false, region: USA}
+  - {ticker: "^GDAXI", name: DAX, kind: index, currency: EUR, tradable: false, region: Germany}
+  - {ticker: "^STOXX50E", name: Euro Stoxx 50, kind: index, currency: EUR, tradable: false, region: Euro area}
+  - {ticker: "^VIX", name: CBOE VIX, kind: index, currency: USD, tradable: false, region: USA}
+  - {ticker: "GC=F", name: Gold futures, kind: commodity, currency: USD, tradable: false, theme: gold}
+  - {ticker: "CL=F", name: WTI crude futures, kind: commodity, currency: USD, tradable: false, theme: energy}
+  - {ticker: "BZ=F", name: Brent crude futures, kind: commodity, currency: USD, tradable: false, theme: energy}
+  - {ticker: "HG=F", name: Copper futures, kind: commodity, currency: USD, tradable: false, theme: "copper / electrification"}
+  - {ticker: "SI=F", name: Silver futures, kind: commodity, currency: USD, tradable: false, theme: gold}
+  - {ticker: BTC-USD, name: Bitcoin, kind: crypto, currency: USD, tradable: false, theme: crypto}
+  - {ticker: ETH-USD, name: Ethereum, kind: crypto, currency: USD, tradable: false, theme: crypto}
+  - {ticker: EURUSD=X, name: EUR/USD, kind: fx, currency: USD, tradable: false}
+  - {ticker: EURGBP=X, name: EUR/GBP, kind: fx, currency: GBP, tradable: false}

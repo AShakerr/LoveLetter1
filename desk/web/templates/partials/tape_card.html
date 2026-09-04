@@ -1,0 +1,15 @@
+<div class="card fresh-{{ it.freshness }}{% if it.is_manual %} manual{% endif %}" title="{{ it.spec.key }}">
+  <div class="label">{{ it.spec.label }}</div>
+  <div class="value">{% if it.spec.unit == '$' %}${% endif %}{{ it.value | num(it.spec.decimals) }}{% if it.spec.unit and it.spec.unit != '$' %}<span class="unit">{{ it.spec.unit }}</span>{% endif %}</div>
+  {% set ch = it.change %}
+  <div class="delta {% if ch is not none and ch > 0 %}up{% elif ch is not none and ch < 0 %}down{% endif %}">{{ ch | change(it.spec.change) }}</div>
+  <div class="meta">
+    {% if it.as_of %}
+      <span class="asof">{{ it.as_of.isoformat() }}</span>
+      <span class="src">{{ it.source }}</span>
+    {% else %}
+      <span class="asof">no data</span>
+    {% endif %}
+    {% if it.note %}<span class="note">{{ it.note }}</span>{% endif %}
+  </div>
+</div>

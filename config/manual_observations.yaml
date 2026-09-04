@@ -1,0 +1,16 @@
+# Hand-maintained series with no reliable free API (Egypt). Edit values and as_of dates by hand.
+# The dashboard paints a series red once as_of is older than 14 days.
+# PLACEHOLDER values: replace with real readings before relying on them.
+observations:
+  - series: EGX30
+    label: EGX30 index
+    value: 0
+    as_of: 2026-08-15
+    unit: pts
+    note: "PLACEHOLDER — update from egx.com.eg"
+  - series: CBE_DEPOSIT_RATE
+    label: CBE overnight deposit rate
+    value: 0
+    as_of: 2026-08-15
+    unit: "%"
+    note: "PLACEHOLDER — update from cbe.org.eg"

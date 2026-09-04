@@ -1,0 +1,18 @@
+name: desk
+
+services:
+  app:
+    build: .
+    image: desk:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DESK_DATA_DIR: /data
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - desk_data:/data
+    ports:
+      - "127.0.0.1:8000:8000"   # Caddy terminates TLS on the host and reverse-proxies here
+
+volumes:
+  desk_data:

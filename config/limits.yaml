@@ -1,0 +1,14 @@
+# Position limits (docs/BRIEF.md section 2). Fractions of total portfolio value in EUR.
+max_single_position: 0.15
+max_single_theme: 0.35
+max_illiquid_private: 0.15
+min_diversified_core_target: 0.40
+min_diversified_core_warn: 0.25
+max_crypto: 0.05
+# Rules engine defaults (section 8)
+stop_loss:
+  stock: 0.18
+  etf: 0.12
+  private: null
+max_buy_size_per_decision: 0.05
+score_bands: {act: 75, candidate: 60, watch: 45}

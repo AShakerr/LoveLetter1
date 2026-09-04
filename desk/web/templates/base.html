@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}desk{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">desk <span class="muted">v{{ version }}</span></div>
+    <nav>
+      <a href="/" class="active">Tape</a>
+      <a class="disabled" title="phase 2">Portfolio</a>
+      <a class="disabled" title="phase 2">House views</a>
+      <a class="disabled" title="phase 3">Decisions</a>
+      <a class="disabled" title="phase 4">Track record</a>
+    </nav>
+    <div class="clock muted">{{ now.strftime('%a %d %b %Y %H:%M') }} {{ tz }}</div>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

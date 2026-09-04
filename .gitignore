@@ -1,0 +1,23 @@
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# runtime data (SQLite, archive, inbox, backups live in the data volume)
+data/*
+!data/.gitkeep
+inbox/*
+!inbox/.gitkeep
+!inbox/portfolio/
+inbox/portfolio/*
+!inbox/portfolio/.gitkeep
+archive/reports/*
+!archive/reports/.gitkeep
+
+# secrets
+.env

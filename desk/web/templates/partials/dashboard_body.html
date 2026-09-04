@@ -1,0 +1,46 @@
+<section class="toolbar">
+  <form hx-post="/jobs/run" hx-target="#dashboard" hx-swap="innerHTML" hx-indicator="#run-indicator">
+    <button type="submit" {% if running %}disabled{% endif %}>Run now</button>
+    <span id="run-indicator" class="htmx-indicator muted">fetching all sources…</span>
+  </form>
+  {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+  {% if next_runs %}
+  <div class="muted small">
+    {% for j in next_runs %}{{ j.name }}: {{ j.next.strftime('%a %d %b %H:%M') if j.next else '—' }}{% if not loop.last %} · {% endif %}{% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Tape</h2>
+  <div class="tape">
+    {% for it in tape %}{% include "partials/tape_card.html" %}{% endfor %}
+  </div>
+</section>
+
+<section>
+  <h2>More</h2>
+  <div class="tape compact">
+    {% for it in more %}{% include "partials/tape_card.html" %}{% endfor %}
+  </div>
+</section>
+
+<section>
+  <h2>Sources</h2>
+  <table class="runs">
+    <thead><tr><th>Source</th><th>Last run</th><th>Status</th><th>Rows</th><th>Detail</th></tr></thead>
+    <tbody>
+    {% for r in runs %}
+      <tr class="status-{{ r.status }}">
+        <td>{{ r.source }}</td>
+        <td>{{ r.started_at.strftime('%Y-%m-%d %H:%M') }} UTC</td>
+        <td><span class="pill {{ r.status }}">{{ r.status }}</span></td>
+        <td>{{ r.rows }}</td>
+        <td class="muted small">{{ r.error or '' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="muted">No fetch has run yet. Press <em>Run now</em> or <code>desk fetch</code>.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>

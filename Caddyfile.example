@@ -1,0 +1,4 @@
+# Same pattern as the IMPROVR dashboard: Caddy on the host, TLS from Let's Encrypt, app on localhost.
+desk.example.com {
+    reverse_proxy 127.0.0.1:8000
+}

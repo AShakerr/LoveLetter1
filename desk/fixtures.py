@@ -1,0 +1,64 @@
+"""Replay the recorded fixtures under tests/fixtures/ through the real parsers into the database.
+
+This is the only sanctioned path for non-live numbers (brief: 'no hardcoded market data anywhere
+except the fixtures in tests/'). Rows are tagged source='fixture:<source>' so they are never
+mistaken for live data.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from desk.config import REPO_ROOT, Settings
+from desk.db import init_db, session_scope
+from desk.persist import persist_observations, record_run
+from desk.sources.alphavantage import AlphaVantageFetcher
+from desk.sources.base import Fetcher, FetchOutcome, utcnow
+from desk.sources.ecb import EcbFetcher
+from desk.sources.fear_greed import FearGreedFetcher
+from desk.sources.fred import FredFetcher
+from desk.sources.gdelt import GdeltFetcher
+from desk.sources.manual import ManualFetcher
+from desk.sources.yfinance_source import YFinanceFetcher
+from desk.universe import load_universe, sync_instruments
+
+DEFAULT_FIXTURES = REPO_ROOT / "tests" / "fixtures"
+
+
+def fixture_fetchers(settings: Settings) -> list[tuple[Fetcher, str]]:
+    return [
+        (YFinanceFetcher({}, settings=settings), "yfinance.json"),
+        (FredFetcher(settings=settings), "fred.json"),
+        (EcbFetcher(settings=settings), "ecb.json"),
+        (AlphaVantageFetcher([], settings=settings), "alphavantage.json"),
+        (GdeltFetcher(settings=settings), "gdelt.json"),
+        (FearGreedFetcher(settings=settings), "fear_greed.json"),
+        (ManualFetcher(settings=settings), "manual.json"),
+    ]
+
+
+def load_fixtures(settings: Settings, fixtures_dir: Path | None = None) -> list[dict]:
+    fixtures_dir = fixtures_dir or DEFAULT_FIXTURES
+    init_db(settings)
+    universe = load_universe(settings.config_dir / "universe.yaml")
+    summary: list[dict] = []
+    with session_scope(settings) as session:
+        sync_instruments(session, universe)
+        for fetcher, filename in fixture_fetchers(settings):
+            path = fixtures_dir / filename
+            if not path.exists():
+                summary.append({"source": fetcher.name, "status": "missing", "rows": 0})
+                continue
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            obs = fetcher.parse(raw)
+            for o in obs:
+                o.source = f"fixture:{o.source}"
+            counts = persist_observations(session, obs)
+            rows = sum(v for k, v in counts.items() if not k.startswith("skipped"))
+            outcome = FetchOutcome(
+                fetcher.name, obs, "ok", f"loaded from {path.name}", utcnow(), utcnow()
+            )
+            record_run(session, outcome, rows)
+            summary.append({"source": fetcher.name, "status": "ok", "rows": rows})
+    return summary
