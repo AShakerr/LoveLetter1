@@ -1,0 +1,243 @@
+// Laseq data model.
+// Money is stored in piasters (1 EGP = 100 piasters) as integers to avoid float drift.
+// Dev uses SQLite; production should switch the datasource to PostgreSQL
+// (enums, JSON strings and relations below are all Postgres-compatible).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum Role {
+  DRIVER
+  ADVERTISER
+  ADMIN
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PayoutMethod {
+  VODAFONE_CASH
+  INSTAPAY
+  BANK_TRANSFER
+}
+
+enum BodyType {
+  SEDAN
+  HATCHBACK
+  SUV
+  MICROBUS
+  PICKUP
+}
+
+enum RideHailing {
+  NONE
+  UBER
+  CAREEM
+  INDRIVE
+  DIDI
+}
+
+enum Placement {
+  REAR_WINDOW
+  SIDE_DOORS
+  FULL_WRAP
+}
+
+enum CampaignStatus {
+  DRAFT
+  PENDING_REVIEW
+  ACTIVE
+  PAUSED
+  COMPLETED
+  REJECTED
+}
+
+enum ApplicationStatus {
+  APPLIED
+  ACCEPTED
+  INSTALL_SUBMITTED
+  ACTIVE
+  REJECTED
+  ENDED
+}
+
+enum TripStatus {
+  ACTIVE
+  COMPLETED
+  FLAGGED
+}
+
+enum PayoutStatus {
+  REQUESTED
+  PAID
+  REJECTED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  phone     String   @unique
+  name      String?
+  role      Role?
+  locale    String   @default("ar")
+  createdAt DateTime @default(now())
+
+  driver     DriverProfile?
+  advertiser Advertiser?
+}
+
+model OtpCode {
+  id        String   @id @default(cuid())
+  phone     String
+  code      String
+  expiresAt DateTime
+  consumed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([phone])
+}
+
+model DriverProfile {
+  id            String       @id @default(cuid())
+  userId        String       @unique
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  city          String
+  nationalId    String?
+  licenseNumber String?
+  rideHailing   RideHailing  @default(NONE)
+  avgWeeklyKm   Int          @default(300)
+  payoutMethod  PayoutMethod @default(VODAFONE_CASH)
+  payoutAccount String?
+  status        ReviewStatus @default(PENDING)
+  reviewNote    String?
+  createdAt     DateTime     @default(now())
+
+  vehicles     Vehicle[]
+  applications Application[]
+  payouts      Payout[]
+}
+
+model Vehicle {
+  id       String   @id @default(cuid())
+  driverId String
+  driver   DriverProfile @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  make     String
+  model    String
+  year     Int
+  color    String
+  plate    String
+  bodyType BodyType @default(SEDAN)
+  photoUrl String?
+
+  applications Application[]
+}
+
+model Advertiser {
+  id          String       @id @default(cuid())
+  userId      String       @unique
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyName String
+  industry    String?
+  website     String?
+  taxId       String?
+  status      ReviewStatus @default(PENDING)
+  createdAt   DateTime     @default(now())
+
+  campaigns Campaign[]
+}
+
+model Campaign {
+  id                String         @id @default(cuid())
+  advertiserId      String
+  advertiser        Advertiser     @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+  name              String
+  description       String
+  creativeUrl       String?
+  placement         Placement      @default(REAR_WINDOW)
+  /// JSON array of city slugs, e.g. ["cairo","giza"]
+  cities            String
+  /// JSON array of BodyType values allowed; empty array = any
+  allowedBodyTypes  String         @default("[]")
+  minCarYear        Int            @default(2010)
+  budgetPiasters    Int
+  ratePerKmPiasters Int
+  monthlyBasePiasters Int          @default(0)
+  monthlyCapKm      Int            @default(1500)
+  driverSlots       Int
+  startDate         DateTime
+  endDate           DateTime
+  status            CampaignStatus @default(DRAFT)
+  reviewNote        String?
+  createdAt         DateTime       @default(now())
+
+  applications Application[]
+}
+
+model Application {
+  id                String            @id @default(cuid())
+  campaignId        String
+  campaign          Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  driverId          String
+  driver            DriverProfile     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  vehicleId         String
+  vehicle           Vehicle           @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  status            ApplicationStatus @default(APPLIED)
+  installPhotoUrl   String?
+  installVerifiedAt DateTime?
+  note              String?
+  appliedAt         DateTime          @default(now())
+
+  trips Trip[]
+
+  @@unique([campaignId, driverId])
+}
+
+model Trip {
+  id               String     @id @default(cuid())
+  applicationId    String
+  application      Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  startedAt        DateTime   @default(now())
+  endedAt          DateTime?
+  distanceKm       Float      @default(0)
+  estImpressions   Int        @default(0)
+  earningsPiasters Int        @default(0)
+  status           TripStatus @default(ACTIVE)
+  flagReason       String?
+
+  pings LocationPing[]
+
+  @@index([applicationId, startedAt])
+}
+
+model LocationPing {
+  id         String   @id @default(cuid())
+  tripId     String
+  trip       Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  lat        Float
+  lng        Float
+  speedKmh   Float?
+  recordedAt DateTime @default(now())
+
+  @@index([tripId, recordedAt])
+}
+
+model Payout {
+  id             String       @id @default(cuid())
+  driverId       String
+  driver         DriverProfile @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  amountPiasters Int
+  method         PayoutMethod
+  account        String
+  status         PayoutStatus @default(REQUESTED)
+  reference      String?
+  requestedAt    DateTime     @default(now())
+  paidAt         DateTime?
+}
