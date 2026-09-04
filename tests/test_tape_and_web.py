@@ -123,7 +123,7 @@ def test_run_now_uses_job(client, monkeypatch):
 def test_scheduler_jobs(settings):
     sched = build_scheduler(settings)
     jobs = {j.id: j for j in sched.get_jobs()}
-    assert set(jobs) == {"daily_fetch", "nightly_backup"}
+    assert set(jobs) == {"daily_fetch", "nightly_backup", "inbox_scan"}
     trig = jobs["daily_fetch"].trigger
     assert str(trig.timezone) == "Europe/Berlin"
     assert str(trig.fields[trig.FIELD_NAMES.index("hour")]) == "7"

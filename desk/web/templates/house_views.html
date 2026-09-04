@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}desk · house views{% endblock %}
+{% block content %}
+{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+
+<section class="toolbar">
+  <form method="post" action="/inbox/process"><button type="submit">Process inbox</button></form>
+  <form method="post" action="/seed/load"><button type="submit" class="secondary">Load seed</button></form>
+  <span class="muted small">Drop Safra PDFs in <code>inbox/</code>; they are extracted, archived and diffed against the prior view.</span>
+</section>
+
+{% if not reports %}
+<section><p class="muted">No reports yet.</p></section>
+{% else %}
+
+<section>
+  <h2>Headline stance {% if head_report %}<span class="muted">· {{ head_report.kind }} · {{ head_report.date }}</span>{% endif %}</h2>
+  <div class="tape">
+    {% for k, v in headline.items() %}
+    <div class="card fresh-fresh"><div class="label">{{ k | replace('_', ' ') }}</div><div class="value small-value">{{ v or '—' }}</div></div>
+    {% endfor %}
+  </div>
+</section>
+
+<section>
+  <h2>Upgrade / downgrade log</h2>
+  <table class="runs">
+    <thead><tr><th>Date</th><th>Report</th><th>Scope</th><th>Key</th><th>From</th><th></th><th>To</th><th>Quote</th></tr></thead>
+    <tbody>
+    {% for r in log %}
+      <tr class="dir-{{ r.direction }}">
+        <td class="mono">{{ r.report.date }}</td>
+        <td class="small">{{ r.report.kind }}{% if r.tactical %} <span class="pill skipped">tactical</span>{% endif %}</td>
+        <td>{{ r.view.scope }}</td>
+        <td><strong>{{ r.view.key }}</strong></td>
+        <td class="mono">{{ r.view.changed_from }}</td>
+        <td class="arrow {{ r.direction }}">{% if r.direction == 'upgrade' %}▲{% elif r.direction == 'downgrade' %}▼{% else %}→{% endif %}</td>
+        <td class="mono">{{ r.view.stance or r.view.value }}</td>
+        <td class="muted small">{{ r.view.quote }}{% if r.view.page %} <span class="pill">p.{{ r.view.page }}</span>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="muted">No changes recorded.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Current house view <span class="muted">· newest strategic view per key; tactical grids shown separately</span></h2>
+  {% for scope, rows in views.items() %}
+  <h3>{{ scope | replace('_', ' ') }}</h3>
+  <table class="runs">
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td style="width:220px"><strong>{{ r.view.key }}</strong></td>
+        <td style="width:150px">{% if r.view.stance %}<span class="stance {{ r.view.stance }}">{{ r.view.stance | replace('_', ' ') }}</span>{% endif %}
+            {% if r.view.value %}<span class="mono">{{ r.view.value }}</span>{% endif %}</td>
+        <td class="muted small" style="width:110px">{{ r.report.date }}</td>
+        <td class="muted small">{{ r.view.quote }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endfor %}
+</section>
+
+<section>
+  <h2>Named risks</h2>
+  <ul class="risks">{% for r in risks %}<li><strong>{{ r.risk }}</strong> <span class="muted small">{{ r.date }} · {{ r.kind }}</span><br><span class="small">{{ r.quote }}</span></li>{% endfor %}</ul>
+</section>
+
+<section>
+  <h2>Reports</h2>
+  <table class="runs">
+    <thead><tr><th>Date</th><th>Kind</th><th>File</th><th>Extracted</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for rep in reports %}
+      <tr>
+        <td class="mono">{{ rep.date }}</td><td>{{ rep.kind }}</td><td class="small">{{ rep.filename }}</td>
+        <td class="muted small">{{ rep.extracted_at.strftime('%Y-%m-%d %H:%M') if rep.extracted_at else '' }}</td>
+        <td>{% if rep.flagged %}<span class="pill failed">extraction failed</span> <span class="muted small">{{ rep.flag_reason }}</span>
+            {% else %}<span class="pill ok">ok</span>{% if rep.raw_json and rep.raw_json.get('inconsistencies') %} <span class="pill cached" title="{{ rep.raw_json.inconsistencies | join(' | ') }}">{{ rep.raw_json.inconsistencies | length }} inconsistencies</span>{% endif %}{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,248 @@
+{
+  "_meta": {
+    "description": "Seed house views extracted from six Bank J. Safra Sarasin reports, 12-28 August 2026. Same schema as prompts/safra_extract.md. Load in report date order so changed_from resolves.",
+    "extracted": "2026-09-04",
+    "tag": "seed:safra-2026-08"
+  },
+  "reports": [
+    {
+      "publisher": "Safra Sarasin",
+      "kind": "economic_outlook",
+      "date": "2026-08-12",
+      "filename": "EconomicOutlookInvestmentStrategy_20260812_en.pdf",
+      "headline_stance": {
+        "equities": "slight overweight",
+        "bonds": "slight underweight",
+        "credit": "neutral",
+        "duration_preference": "intermediate, 5-7 year maturities"
+      },
+      "views": [
+        {"scope": "asset", "key": "Equities", "stance": "overweight", "value": "slight", "changed_from": null, "quote": "Equities: slight overweight. Bonds: slight underweight.", "page": 4},
+        {"scope": "asset", "key": "Bonds", "stance": "underweight", "value": "slight", "changed_from": null, "quote": "Equities: slight overweight. Bonds: slight underweight.", "page": 4},
+        {"scope": "asset", "key": "Credit", "stance": "neutral", "value": null, "changed_from": null, "quote": "Credit spreads are close to all-time lows. A structural underweight in credit is not justified. We remain neutral.", "page": 30},
+        {"scope": "asset", "key": "Duration", "stance": null, "value": "5-7y", "changed_from": null, "quote": "We continue to recommend 5- to 7-year maturities, which still present the best risk-/return trade-off.", "page": 30},
+        {"scope": "region", "key": "USA", "stance": "most_preferred", "value": null, "changed_from": null, "quote": "After summer soft patch, US market should grind higher over coming months. Target 8'200 for the S&P 500 by year-end.", "page": 51},
+        {"scope": "region", "key": "Euro area", "stance": "most_preferred", "value": null, "changed_from": "neutral", "quote": "Upgrade euro area on cyclical preference and improved macro data in Europe. Prefer unhedged over FX-hedged, given potential euro strength.", "page": 51},
+        {"scope": "region", "key": "Switzerland", "stance": "neutral", "value": null, "changed_from": "most_preferred", "quote": "Downgrade Swiss equities after solid outperformance. Market is no longer attractively valued and FX support should fade.", "page": 51},
+        {"scope": "region", "key": "Emerging Markets", "stance": "neutral", "value": null, "changed_from": null, "quote": "Semi strength unlikely to return quickly despite solid demand. Other parts of EM may do better, particularly China.", "page": 51},
+        {"scope": "region", "key": "China", "stance": "neutral", "value": null, "changed_from": null, "quote": "Further upside potential as gap to credit impulse remains fairly wide. Government may provide more stimulus.", "page": 51},
+        {"scope": "region", "key": "UK", "stance": "neutral", "value": null, "changed_from": null, "quote": "Rising oil prices have been a major tailwind for energy-heavy UK. Looking ahead, oil price volatility poses risks.", "page": 51},
+        {"scope": "region", "key": "Japan", "stance": "neutral", "value": null, "changed_from": null, "quote": "A potential stopgap against a further weakening yen will likely cap equity returns.", "page": 51},
+        {"scope": "sector", "key": "Information Technology", "stance": "most_preferred", "value": null, "changed_from": "neutral", "quote": "Q2 guidance confirmed strength of AI build-out. Software may be a bigger AI beneficiary than market is discounting. We are more sceptical on semis than on hardware and software.", "page": 52},
+        {"scope": "sector", "key": "Industrials", "stance": "most_preferred", "value": null, "changed_from": "neutral", "quote": "Upgrade given cyclical preference. Sector should benefit from solid macro backdrop in H2.", "page": 52},
+        {"scope": "sector", "key": "Materials", "stance": "most_preferred", "value": null, "changed_from": null, "quote": "Recovery in copper prices has recently pushed materials higher.", "page": 52},
+        {"scope": "sector", "key": "Communication Services", "stance": "most_preferred", "value": null, "changed_from": null, "quote": "Defensive sector with high quality names. Reasonable valuations.", "page": 52},
+        {"scope": "sector", "key": "Utilities", "stance": "most_preferred", "value": null, "changed_from": null, "quote": "Datacenter investment drive electricity demand.", "page": 52},
+        {"scope": "sector", "key": "Healthcare", "stance": "neutral", "value": null, "changed_from": "most_preferred", "quote": "Downgrade after strong performance over summer. Sector continues to lack earnings momentum and is structurally challenged.", "page": 52},
+        {"scope": "sector", "key": "Banks", "stance": "neutral", "value": null, "changed_from": null, "quote": "Downside risks have clearly risen due to increased credit uncertainty. Lower rates may turn into challenge for net interest income.", "page": 52},
+        {"scope": "sector", "key": "Insurance", "stance": "neutral", "value": null, "changed_from": null, "quote": "Neutral.", "page": 52},
+        {"scope": "sector", "key": "Real Estate", "stance": "neutral", "value": null, "changed_from": null, "quote": "Increasing refinancing requirements a risk in 2026.", "page": 52},
+        {"scope": "sector", "key": "Consumer Staples", "stance": "neutral", "value": null, "changed_from": null, "quote": "Neutral.", "page": 52},
+        {"scope": "sector", "key": "Consumer Discretionary", "stance": "neutral", "value": null, "changed_from": null, "quote": "Neutral.", "page": 52},
+        {"scope": "sector", "key": "Energy", "stance": "least_preferred", "value": null, "changed_from": null, "quote": "Energy sector may suffer if oil prices drop as Iran deal is reached.", "page": 52},
+        {"scope": "index_target", "key": "S&P 500 Dec-26", "stance": null, "value": "8200", "changed_from": "8000", "quote": "S&P 500 year-end target raised to 8'200, supported by strong earnings upgrades.", "page": 51},
+        {"scope": "index_target", "key": "S&P 500 Dec-27", "stance": null, "value": "8800", "changed_from": null, "quote": "S&P 500: 7'728 current, 8'200 Dec-26, 8'500 Jun-27, 8'800 Dec-27.", "page": 4},
+        {"scope": "index_target", "key": "Nasdaq 100 Dec-26", "stance": null, "value": "32000", "changed_from": null, "quote": "Nasdaq 100: 29'525 current, 32'000 Dec-26.", "page": 4},
+        {"scope": "index_target", "key": "Euro Stoxx 50 Dec-26", "stance": null, "value": "6900", "changed_from": null, "quote": "Euro Stoxx 50: 6'551 current, 6'900 Dec-26, 7'500 Dec-27.", "page": 4},
+        {"scope": "index_target", "key": "DAX Dec-26", "stance": null, "value": "28000", "changed_from": null, "quote": "DAX: 26'391 current, 28'000 Dec-26, 30'000 Dec-27.", "page": 4},
+        {"scope": "index_target", "key": "SMI Dec-26", "stance": null, "value": "15200", "changed_from": null, "quote": "SMI: 14'575 current, 15'200 Dec-26.", "page": 4},
+        {"scope": "index_target", "key": "MSCI EM Dec-26", "stance": null, "value": "1750", "changed_from": null, "quote": "MSCI EM: 1'665 current, 1'750 Dec-26, 1'900 Dec-27.", "page": 4},
+        {"scope": "index_target", "key": "MSCI World Dec-26", "stance": null, "value": "5290", "changed_from": null, "quote": "MSCI World: 4'996 current, 5'290 Dec-26.", "page": 4},
+        {"scope": "rate", "key": "Fed funds Dec-26", "stance": null, "value": "4.25", "changed_from": null, "quote": "Robust domestic demand, a strengthening labour market, and sticky core inflation are expected to force the Fed to raise rates. Two hikes this year.", "page": 17},
+        {"scope": "rate", "key": "ECB deposit Dec-26", "stance": null, "value": "2.50", "changed_from": null, "quote": "ECB to hike 25bp in September, with an increasing risk that it might not be the last rate hike this cycle.", "page": 17},
+        {"scope": "rate", "key": "BoE base Dec-26", "stance": null, "value": "3.75", "changed_from": "4.00", "quote": "We no longer anticipate the Bank of England to tighten policy this year.", "page": 17},
+        {"scope": "rate", "key": "BoJ policy Dec-26", "stance": null, "value": "1.50", "changed_from": null, "quote": "BoJ should hike rates faster, and it probably knows it. Two more hikes later this year.", "page": 17},
+        {"scope": "rate", "key": "SNB target Dec-26", "stance": null, "value": "0.00", "changed_from": null, "quote": "SNB unchanged at 0% through end-2027.", "page": 17},
+        {"scope": "rate", "key": "US 10y Dec-26", "stance": null, "value": "4.50", "changed_from": null, "quote": "USA 10y: 4.69 current, 4.50 Dec-26, 4.50 Dec-27.", "page": 4},
+        {"scope": "rate", "key": "Bund 10y Dec-26", "stance": null, "value": "2.90", "changed_from": null, "quote": "Germany 10y: 3.13 current, 2.90 Dec-26, 2.85 Dec-27.", "page": 4},
+        {"scope": "fx", "key": "EUR-USD Dec-26", "stance": null, "value": "1.16", "changed_from": null, "quote": "EUR-USD: 1.15 current, 1.16 Dec-26, 1.17 Jun-27, 1.18 Dec-27.", "page": 4},
+        {"scope": "fx", "key": "EUR-USD Dec-27", "stance": null, "value": "1.18", "changed_from": null, "quote": "EUR to recover longer term; widening US policy rate advantage a near-term challenge.", "page": 4},
+        {"scope": "fx", "key": "USD-CHF Dec-26", "stance": null, "value": "0.78", "changed_from": null, "quote": "USD-CHF: 0.81 current, 0.78 Dec-26, 0.76 Dec-27.", "page": 4},
+        {"scope": "fx", "key": "EUR-CHF Dec-26", "stance": null, "value": "0.91", "changed_from": null, "quote": "EUR-CHF: 0.94 current, 0.91 Dec-26, 0.90 Dec-27.", "page": 4},
+        {"scope": "fx", "key": "USD-JPY Dec-26", "stance": null, "value": "160", "changed_from": null, "quote": "USD-JPY: 159 current, 160 Dec-26, 160 Dec-27.", "page": 4},
+        {"scope": "commodity", "key": "Gold Dec-26", "stance": null, "value": "4600", "changed_from": null, "quote": "Gold, USD/oz: 4'392 current, 4'600 Dec-26, 4'800 Jun-27, 5'000 Dec-27.", "page": 4},
+        {"scope": "commodity", "key": "Gold Dec-27", "stance": null, "value": "5000", "changed_from": null, "quote": "Improved support for gold after the significant consolidation following the January all-time high; the fundamental case remains in place.", "page": 4},
+        {"scope": "commodity", "key": "Brent 6-12m", "stance": null, "value": "75-80", "changed_from": null, "quote": "We expect Brent crude to trade around $75-$80 per barrel over the next 6-12 months.", "page": 12}
+      ],
+      "risks": [
+        {"risk": "AI trade financed by debt", "quote": "As the free cash flow at 3 out of 5 hyperscalers is turning negative, debt markets are being tapped. Increasing debt-financing for the datacentre build-out adds risk to the AI trade if earnings growth slows.", "page": 48},
+        {"risk": "US demand too strong for 2% target", "quote": "Demand is growing too strongly to be consistent with the 2% inflation target. US nominal GDP expanded by 6.5% over the past year.", "page": 10},
+        {"risk": "Euro area inflation near 3% into year-end", "quote": "Inflation stays close to 3% until year-end. Risks of second-round effects remain.", "page": 20},
+        {"risk": "Super El Nino food price surge", "quote": "A relief from lower energy prices could be offset by a possible surge in food prices later in the year as the likelihood of a super El Nino rises.", "page": 40},
+        {"risk": "Real estate refinancing", "quote": "Increasing refinancing requirements a risk in 2026.", "page": 52}
+      ],
+      "forecast_tables": {
+        "gdp_cpi": [
+          {"region": "US", "gdp_2026": 2.2, "gdp_2027": 2.1, "cpi_2026": 3.4, "cpi_2027": 2.6},
+          {"region": "Euro area", "gdp_2026": 1.0, "gdp_2027": 1.4, "cpi_2026": 2.7, "cpi_2027": 2.3, "gdp_2026_prev": 0.5},
+          {"region": "Switzerland", "gdp_2026": 1.2, "gdp_2027": 1.1, "cpi_2026": 0.5, "cpi_2027": 0.8},
+          {"region": "UK", "gdp_2026": 1.1, "gdp_2027": 0.9, "cpi_2026": 3.0, "cpi_2027": 2.5},
+          {"region": "Japan", "gdp_2026": 0.7, "gdp_2027": 0.7, "cpi_2026": 1.7, "cpi_2027": 2.2},
+          {"region": "China", "gdp_2026": 4.5, "gdp_2027": 4.5, "cpi_2026": 1.0, "cpi_2027": 0.7}
+        ]
+      },
+      "inconsistencies": [
+        "ECB hike timing: September 2026 on p.17 vs 'H2 2027' on p.30. Rate table (2.25 to 2.50 by Dec-26) supports September 2026.",
+        "Euro-area hedging: 'prefer unhedged' on p.52 and p.60 title vs 'prefer FX-hedged' in the p.60 sub-caption."
+      ]
+    },
+    {
+      "publisher": "Safra Sarasin",
+      "kind": "market_views",
+      "date": "2026-08-13",
+      "filename": "EconomicMarketViews_20260813_en.pdf",
+      "headline_stance": {"equities": "overweight USA and Eurozone, neutral elsewhere", "bonds": "neutral all sovereigns", "credit": "neutral IG and HY", "duration_preference": null},
+      "views": [
+        {"scope": "region", "key": "USA", "stance": "overweight", "value": "3-month tactical", "changed_from": null, "quote": "Tactical views (3-month horizon): USA Overweight; Eurozone Overweight.", "page": 1},
+        {"scope": "region", "key": "Euro area", "stance": "overweight", "value": "3-month tactical", "changed_from": null, "quote": "Eurozone Overweight.", "page": 1},
+        {"scope": "sector", "key": "Energy", "stance": "overweight", "value": "3-month tactical", "changed_from": null, "quote": "Equity sectors: Energy OW; Materials OW; Industrials OW; Information Technology OW; Communication Services OW; Utilities OW.", "page": 1},
+        {"scope": "index_target", "key": "MSCI China Dec-26", "stance": null, "value": "84", "changed_from": null, "quote": "MSCI China: 76 current, 84 4Q26, 88 4Q27.", "page": 1}
+      ],
+      "risks": [],
+      "inconsistencies": [
+        "This dashboard marks Energy as tactical Overweight (3-month) while the 12 Aug strategy document has Energy as least preferred. Treat the strategy document as the house view; the tactical grid may lag."
+      ]
+    },
+    {
+      "publisher": "Safra Sarasin",
+      "kind": "cross_asset_weekly",
+      "date": "2026-08-14",
+      "filename": "CrossAssetWeekly_20260814_en.pdf",
+      "headline_stance": {"equities": "constructive; summer lull over", "bonds": "prefer 5-7y; long ends >10y fraught with too much risk", "credit": "neutral; spreads near 25-year tights", "duration_preference": "5-7 years"},
+      "views": [
+        {"scope": "rate", "key": "Fed funds path", "stance": null, "value": "+2 hikes vs ~35bp priced", "changed_from": null, "quote": "Forward markets price only ~35bp of cumulative tightening over the next 12 months; we expect two more Fed hikes.", "page": 6},
+        {"scope": "rate", "key": "BoJ path", "stance": null, "value": "two more hikes by end-year, next in September", "changed_from": null, "quote": "We now expect the BoJ to hike twice more by end-year, next increase in September.", "page": 9},
+        {"scope": "fx", "key": "USD", "stance": null, "value": "softer further out", "changed_from": null, "quote": "It won't take much of a disappointment in US data for the currency to soften further. Balance of risks tilted towards a softer dollar further out.", "page": 8},
+        {"scope": "fx", "key": "USD-JPY near term", "stance": null, "value": "around 160", "changed_from": null, "quote": "USDJPY to remain around the 160-level near term.", "page": 9},
+        {"scope": "commodity", "key": "Gold", "stance": null, "value": "not yet out of the woods", "changed_from": null, "quote": "Gold is not yet out of the woods. Rising real yields could temporarily challenge gold again.", "page": 9},
+        {"scope": "commodity", "key": "Brent 6-12m", "stance": null, "value": "75-80", "changed_from": null, "quote": "We expect Brent crude to average $75-$80 in the next 6-12 months, compared to the H1 average of $92.", "page": 3},
+        {"scope": "sector", "key": "Information Technology", "stance": "most_preferred", "value": null, "changed_from": "neutral", "quote": "Tech upgraded again to most preferred, after a downgrade to neutral at the beginning of June, yet stay vigilant with regard to increasing structural risks.", "page": 12},
+        {"scope": "sector", "key": "Healthcare", "stance": "neutral", "value": null, "changed_from": "most_preferred", "quote": "Healthcare to neutral: underwhelming Q2 earnings delivery, valuations recovered, and USD strength may fade.", "page": 12},
+        {"scope": "sector", "key": "Industrials", "stance": "most_preferred", "value": null, "changed_from": "neutral", "quote": "Industrials to most preferred: lagged since early June despite solid Q2 delivery; growth-momentum acceleration leaves room for cyclicals to catch up.", "page": 12},
+        {"scope": "region", "key": "Euro area", "stance": "most_preferred", "value": null, "changed_from": "neutral", "quote": "Euro area equities to most preferred; Swiss equities to neutral.", "page": 12},
+        {"scope": "index_target", "key": "S&P 500 Dec-26", "stance": null, "value": "8200", "changed_from": "8000", "quote": "S&P 500 end-2026 target raised to 8'200 from 8'000, which leaves around 6% upside by year-end.", "page": 12}
+      ],
+      "risks": [
+        {"risk": "Hyperscaler FCF negative", "quote": "Free cash flow now negative for three out of five hyperscalers and will likely turn negative for the aggregate in Q3. While this helps boost the AI trade in the short term, long-term risks are clearly increasing.", "page": 11},
+        {"risk": "Rate sensitivity rising with leverage", "quote": "Growing reliance on leverage to finance the capex boom will gradually increase the rate sensitivity of a larger portion of the US economy.", "page": 7},
+        {"risk": "El Nino food prices", "quote": "The impact from a strong El Nino could lower agricultural output and increase food prices later this year.", "page": 4}
+      ],
+      "market_performance_table": [
+        {"name": "S&P 500", "level": 7799, "pe": 21.8, "tr_1w": 1.2, "tr_ytd": 14.7},
+        {"name": "Nasdaq 100", "level": 30085, "pe": 26.0, "tr_1w": 2.4, "tr_ytd": 19.6},
+        {"name": "DAX", "level": 26300, "pe": 17.3, "tr_1w": 0.6, "tr_ytd": 7.4},
+        {"name": "DJ Euro Stoxx 50", "level": 6545, "pe": 16.6, "tr_1w": 0.7, "tr_ytd": 15.7},
+        {"name": "SMI", "level": 14475, "pe": 19.3, "tr_1w": -0.3, "tr_ytd": 12.3},
+        {"name": "MSCI UK", "level": 3071, "pe": 13.3, "tr_1w": -0.6, "tr_ytd": 11.3},
+        {"name": "MSCI Emerging Markets", "level": 1695, "pe": 11.5, "tr_1w": 2.3, "tr_ytd": 22.5},
+        {"name": "US Treasury 10y", "level": 4.65, "pe": null, "tr_1w": null, "tr_ytd": -0.6},
+        {"name": "German Bund 10y", "level": 3.15, "pe": null, "tr_1w": null, "tr_ytd": -0.1},
+        {"name": "EUR-USD", "level": 1.15, "pe": null, "tr_1w": -0.1, "tr_ytd": -1.7},
+        {"name": "Brent", "level": 93, "pe": null, "tr_1w": -10.9, "tr_ytd": 48.5},
+        {"name": "Gold", "level": 4334, "pe": null, "tr_1w": -7.6, "tr_ytd": -0.1}
+      ]
+    },
+    {
+      "publisher": "Safra Sarasin",
+      "kind": "cross_asset_weekly",
+      "date": "2026-08-21",
+      "filename": "CrossAssetWeekly_20260821_en.pdf",
+      "headline_stance": {"equities": "constructive", "bonds": "long-end pressure; buybacks a short-term fix", "credit": "neutral but lower-rated HY widening; private credit defaults rising", "duration_preference": "5-7 years"},
+      "views": [
+        {"scope": "commodity", "key": "Gold", "stance": null, "value": "upside until end of year", "changed_from": "not yet out of the woods", "quote": "The trough is likely behind us. We stick to our conviction that gold still has upside until the end of this year.", "page": 5},
+        {"scope": "rate", "key": "US long end", "stance": null, "value": "upward pressure", "changed_from": null, "quote": "These purchases only represent a short-term fix. Without fundamental fiscal adjustments, the current pace of debt issuance will continue to exert upward pressure on longer-term US Treasury yields.", "page": 10},
+        {"scope": "asset", "key": "US financial conditions", "stance": null, "value": "gradually tightening beneath the surface", "changed_from": "not a substantial headwind", "quote": "Current US financial conditions are not a meaningful headwind to growth for now, but they are gradually tightening beneath the surface.", "page": 2}
+      ],
+      "risks": [
+        {"risk": "Private credit defaults", "quote": "Spreads for lower-rated High Yield issuer cohorts have widened more meaningfully than under normal conditions; the private credit sector is clearly grappling with sharply rising default rates.", "page": 4},
+        {"risk": "Fed independence / Warsh reaction function", "quote": "Rising Fed independence concerns make a revival of the dollar debasement trade more likely.", "page": 6},
+        {"risk": "US fiscal", "quote": "US national debt has now topped $40 trillion, driven by a revised $2.1 trillion annual budget deficit, bringing federal net interest payments to around 3.5% of US GDP.", "page": 10},
+        {"risk": "Very strong El Nino", "quote": "NOAA: odds of a very strong El Nino now >90%. FAO forecasts world cereal production 2026/27 to decline by 2%; cereal prices already up ~8% yoy. The Philippines is the most vulnerable country.", "page": 8}
+      ],
+      "market_performance_table": [
+        {"name": "S&P 500", "level": 7641, "pe": 21.3, "tr_1w": -2.0, "tr_ytd": 12.4},
+        {"name": "Nasdaq 100", "level": 29213, "pe": 25.2, "tr_1w": -2.9, "tr_ytd": 16.2},
+        {"name": "DAX", "level": 25983, "pe": 16.8, "tr_1w": -1.2, "tr_ytd": 6.1},
+        {"name": "DJ Euro Stoxx 50", "level": 6422, "pe": 16.3, "tr_1w": -1.9, "tr_ytd": 13.6},
+        {"name": "SMI", "level": 14368, "pe": 19.2, "tr_1w": -0.7, "tr_ytd": 11.5},
+        {"name": "MSCI UK", "level": 3070, "pe": 13.3, "tr_1w": 0.0, "tr_ytd": 11.3},
+        {"name": "MSCI Emerging Markets", "level": 1700, "pe": 11.3, "tr_1w": 0.3, "tr_ytd": 22.9},
+        {"name": "US Treasury 10y", "level": 4.70, "pe": null, "tr_1w": null, "tr_ytd": -0.9},
+        {"name": "German Bund 10y", "level": 3.26, "pe": null, "tr_1w": null, "tr_ytd": -0.9},
+        {"name": "EUR-USD", "level": 1.17, "pe": null, "tr_1w": 1.1, "tr_ytd": -0.4},
+        {"name": "Brent", "level": 94, "pe": null, "tr_1w": -9.3, "tr_ytd": 51.3},
+        {"name": "Gold", "level": 4543, "pe": null, "tr_1w": -3.2, "tr_ytd": 4.7}
+      ]
+    },
+    {
+      "publisher": "Safra Sarasin",
+      "kind": "equity_focus_list",
+      "date": "2026-08-25",
+      "filename": "USEquityFocusList_20260825_en.pdf",
+      "headline_stance": {"equities": "20-name US best-ideas list (CFRA research)", "bonds": null, "credit": null, "duration_preference": null},
+      "views": [
+        {"scope": "stock", "key": "NVDA", "stance": "buy", "value": "TP 270; Strong Buy", "changed_from": null, "quote": "We see 40% probability of AI bubble in next three years.", "page": null},
+        {"scope": "stock", "key": "CRS", "stance": "buy", "value": "TP 698; Strong Buy", "changed_from": "buy", "quote": "Upgraded from Buy to Strong Buy on July 31. One of only three qualified global suppliers of high-end nickel superalloys.", "page": null},
+        {"scope": "stock", "key": "FLS", "stance": "buy", "value": "TP 100; Strong Buy", "changed_from": null, "quote": "Q2 bookings +25.5%; backlog $3.3B (+16.9%). Nuclear renaissance / AI data-center power theme.", "page": null},
+        {"scope": "stock", "key": "AXP", "stance": "buy", "value": "TP 420", "changed_from": null, "quote": "TP raised $10 to $420. Risks: proposed 10% credit card interest rate cap.", "page": null},
+        {"scope": "stock", "key": "BLK", "stance": "buy", "value": "TP 1260", "changed_from": null, "quote": "2025 inflows $698B; ETF franchise $6.5T AUM.", "page": null},
+        {"scope": "stock", "key": "CARR", "stance": "buy", "value": "TP 75", "changed_from": null, "quote": "Data center orders +300%; working with NVIDIA and Dell on liquid cooling certification.", "page": null},
+        {"scope": "stock", "key": "LLY", "stance": "buy", "value": "TP 1395", "changed_from": null, "quote": "2026 revenue guidance raised to $85B-$87B. Mounjaro ex-US revenue surpassed US for first time.", "page": null},
+        {"scope": "stock", "key": "MS", "stance": "buy", "value": "TP 250", "changed_from": "strong_buy", "quote": "Lowered from 5-STARS to 4-STARS on valuation; 2026 may be peak earnings. Lead underwriter on SpaceX's $86.3B offering.", "page": null},
+        {"scope": "stock", "key": "PH", "stance": "buy", "value": "TP 1250", "changed_from": null, "quote": "Aerospace Systems record $8.5B backlog; record $8.4B total backlog.", "page": null},
+        {"scope": "stock", "key": "PWR", "stance": "buy", "value": "TP 864", "changed_from": null, "quote": "Record backlog $53.4B. Risk: 30%-50% of 2026 data center projects at risk; fixed-price contracts 62.3% of 1H revenue.", "page": null},
+        {"scope": "stock", "key": "HOOD", "stance": "buy", "value": "TP 110", "changed_from": null, "quote": "Beta 2.35, unsuitable for all investors. Sole initial broker for Trump Accounts.", "page": null},
+        {"scope": "stock", "key": "SNOW", "stance": "buy", "value": "TP 370", "changed_from": null, "quote": "NRR 126%, first Y/Y expansion since 2022. Positive view despite a ~90% increase in shares since Q1 earnings.", "page": null},
+        {"scope": "stock", "key": "SYK", "stance": "buy", "value": "TP 395", "changed_from": null, "quote": "Q2 organic growth 9.0%; FY organic guidance floor raised to 8.3%.", "page": null},
+        {"scope": "stock", "key": "UBER", "stance": "buy", "value": "TP 85", "changed_from": "strong_buy", "quote": "Lowered from Strong Buy to Buy on July 27 on fracturing Waymo relationship; TP cut from $90.", "page": null},
+        {"scope": "stock", "key": "VTR", "stance": "buy", "value": "TP 105", "changed_from": null, "quote": "SHOP NOI +16.3%; 2M turning 80 in 2026; supply constrained.", "page": null},
+        {"scope": "stock", "key": "VST", "stance": "buy", "value": "TP 186", "changed_from": null, "quote": "TP lowered from $202. 20-year PPAs ~3.8 GW with AWS and Meta; Meta PPAs could add ~$700M to 2027 EBITDA.", "page": null},
+        {"scope": "stock", "key": "DIS", "stance": "buy", "value": "TP 125", "changed_from": null, "quote": "TP lowered by $5. SVOD op margin 10.6%; new CEO Josh D'Amaro.", "page": null},
+        {"scope": "stock", "key": "ISRG", "stance": "hold", "value": "TP 420", "changed_from": "buy", "quote": "Downgraded Buy to Hold on July 16; TP cut from $590 to $420 after SureForm stapler recalls.", "page": null},
+        {"scope": "stock", "key": "MCK", "stance": "hold", "value": "TP 945", "changed_from": "buy", "quote": "Downgraded from Buy to Hold. Medical-Surgical IPO separation by 2H 2027.", "page": null},
+        {"scope": "stock", "key": "PANW", "stance": "hold", "value": "TP 394", "changed_from": "buy", "quote": "Downgraded Buy to Hold on valuation (fwd P/E 90x vs 5-yr avg 55x); TP raised $330 to $394.", "page": null}
+      ],
+      "risks": [
+        {"risk": "AI bubble", "quote": "We see 40% probability of AI bubble in next three years (NVDA note).", "page": null},
+        {"risk": "Data-centre project cancellations", "quote": "30%-50% of 2026 data center projects at risk (PWR note).", "page": null}
+      ],
+      "inconsistencies": [
+        "No additions/removals table exists in the PDF; changes are communicated by email. No sector weightings. Sector count: Industrials 6, Financials 4, Health Care 4, IT 3, Real Estate 1, Utilities 1, Comm Services 1. No Energy, Staples or Discretionary names."
+      ]
+    },
+    {
+      "publisher": "Safra Sarasin",
+      "kind": "cross_asset_weekly",
+      "date": "2026-08-28",
+      "filename": "CrossAssetWeekly_20260828_en.pdf",
+      "headline_stance": {"equities": "remain constructive, but Q2 marked peak earnings growth", "bonds": "buybacks a meaningful tailwind to the long end but may not be sufficient", "credit": "net interest burden set to rise", "duration_preference": "5-7 years"},
+      "views": [
+        {"scope": "asset", "key": "US earnings growth", "stance": null, "value": "Q2 = peak (34.2% yoy)", "changed_from": null, "quote": "This is not the end of the earnings cycle, but Q2 probably marked the peak in terms of earnings growth.", "page": 5},
+        {"scope": "commodity", "key": "Oil", "stance": null, "value": "downside risks", "changed_from": null, "quote": "Traffic through the strait has increased. A renewed full closure appears unlikely at this point, implying downside risks to oil and gas prices, rather than upside risks.", "page": 3},
+        {"scope": "fx", "key": "USD near term", "stance": null, "value": "no sharp softening", "changed_from": "softer further out", "quote": "Rate differentials suggest that an immediate sharp dollar softening is unlikely, which would argue that FX support should at best be neutral in the near term.", "page": 5},
+        {"scope": "rate", "key": "US long end", "stance": null, "value": "buybacks remove ~26% of net new long duration at $4bn/op; >50% at $8bn", "changed_from": "short-term fix", "quote": "It provides a meaningful tailwind to the long end, but this may not be sufficient since the market still remains a substantial net absorber of new duration.", "page": 7},
+        {"scope": "fx", "key": "CAD", "stance": null, "value": "volatility to rise; risk tilted softer", "changed_from": null, "quote": "We are less inclined to think that the Canadian dollar will continue to advance against the US dollar in the near term. Yet its commodity link should protect it from pronounced downside pressure.", "page": 9}
+      ],
+      "risks": [
+        {"risk": "Hyperscaler depreciation", "quote": "We estimate that hyperscaler depreciation expenses rise from 8% of sales in 2025 to 22% in 2030.", "page": 4},
+        {"risk": "Net interest expense turning", "quote": "Roughly $800bn of US corporate bond issuance year-to-date, more than $250bn by hyperscalers. We would expect the net interest burden to increase.", "page": 3},
+        {"risk": "30y yield highest since 2007", "quote": "The rise in 30-year Treasury yields to the highest level since 2007 is not welcome news.", "page": 1},
+        {"risk": "US-Canada trade breakdown", "quote": "US imposed a 50% tariff on US$20 billion worth of Canadian exports; Canada retaliating dollar-for-dollar from 8 September.", "page": 8}
+      ],
+      "market_performance_table": [
+        {"name": "S&P 500", "level": 7731, "pe": 21.5, "tr_1w": 1.2, "tr_ytd": 13.8},
+        {"name": "Nasdaq 100", "level": 29642, "pe": 25.6, "tr_1w": 1.5, "tr_ytd": 17.9},
+        {"name": "DAX", "level": 26367, "pe": 17.1, "tr_1w": 1.5, "tr_ytd": 7.7},
+        {"name": "DJ Euro Stoxx 50", "level": 6425, "pe": 16.3, "tr_1w": 0.0, "tr_ytd": 13.6},
+        {"name": "SMI", "level": 14384, "pe": 19.3, "tr_1w": 0.1, "tr_ytd": 11.6},
+        {"name": "MSCI UK", "level": 3075, "pe": 13.3, "tr_1w": 0.2, "tr_ytd": 11.5},
+        {"name": "MSCI Emerging Markets", "level": 1723, "pe": 11.6, "tr_1w": 1.4, "tr_ytd": 24.6},
+        {"name": "US Treasury 10y", "level": 4.68, "pe": null, "tr_1w": null, "tr_ytd": -0.7},
+        {"name": "German Bund 10y", "level": 3.27, "pe": null, "tr_1w": null, "tr_ytd": -0.8},
+        {"name": "EUR-USD", "level": 1.16, "pe": null, "tr_1w": -0.3, "tr_ytd": -0.9},
+        {"name": "Brent", "level": 89, "pe": null, "tr_1w": -14.2, "tr_ytd": 43.0},
+        {"name": "Gold", "level": 4584, "pe": null, "tr_1w": -2.3, "tr_ytd": 5.6}
+      ]
+    }
+  ]
+}

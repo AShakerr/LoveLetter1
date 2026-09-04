@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}desk · portfolio{% endblock %}
+{% block content %}
+{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+
+<section class="toolbar">
+  <form method="post" action="/inbox/process"><button type="submit">Process inbox</button>
+    <span class="muted small">reads PDFs in inbox/ and screenshots in inbox/portfolio/ through Claude</span></form>
+</section>
+
+{% if view.basis == 'empty' %}
+<section><p class="muted">No positions yet. Load the seed snapshot (<form method="post" action="/seed/load" style="display:inline"><button type="submit">Load seed</button></form>) or drop a Revolut screenshot in <code>inbox/portfolio/</code>.</p></section>
+{% else %}
+<section>
+  <div class="banner {% if view.basis != 'confirmed' %}warn{% endif %}">
+    {% if view.basis == 'confirmed' %}Confirmed positions{% else %}<strong>Unconfirmed snapshot</strong> ({{ view.basis[8:] }}) — confirm it below to make it live{% endif %}
+    · as of {{ view.as_of }} · total <strong>€{{ view.total_eur | num(0) }}</strong> · cash €{{ view.cash_eur | num(0) }}
+  </div>
+  {% for w in view.warnings %}<div class="warn-line">⚠ {{ w }}</div>{% endfor %}
+</section>
+
+<section>
+  <h2>Limits</h2>
+  <div class="limits">
+    {% for b in view.limits %}
+    <div class="limit {{ b.status }}">
+      <div class="limit-head"><span>{{ b.label }}{% if b.detail %} <span class="muted">· {{ b.detail }}</span>{% endif %}</span>
+        <span class="mono">{{ b.value | pct }} / {{ '≥' if b.kind == 'min' else '≤' }} {{ b.limit | pct(0) }}</span></div>
+      <div class="bar"><div class="fill" style="width: {{ [b.value / (b.limit if b.kind == 'max' else 1) * 100, 100] | min }}%"></div>
+        <div class="mark" style="left: {{ (100 if b.kind == 'max' else b.limit * 100) }}%"></div></div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="cols">
+  <div>
+    <h2>Themes</h2>
+    <table class="runs"><thead><tr><th>Theme</th><th>Weight</th></tr></thead><tbody>
+      {% for t, w in view.by_theme.items() | sort(attribute=1, reverse=true) %}
+      <tr><td>{{ t }}</td><td class="mono">{{ w | pct }}</td></tr>{% endfor %}</tbody></table>
+  </div>
+  <div>
+    <h2>FX exposure</h2>
+    <table class="runs"><thead><tr><th>Currency</th><th>Weight</th><th>EUR rate</th></tr></thead><tbody>
+      {% for c, w in view.by_currency.items() | sort(attribute=1, reverse=true) %}
+      <tr><td>{{ c }}</td><td class="mono">{{ w | pct }}</td>
+        <td class="muted small">{% set fx = view.fx.get(c) %}{% if fx and fx.per_eur and c != 'EUR' %}{{ fx.per_eur | num(4) }} · {{ fx.as_of }} · {{ fx.source }}{% elif c == 'EUR' %}base{% else %}<span class="red">no rate</span>{% endif %}</td></tr>{% endfor %}</tbody></table>
+  </div>
+  <div>
+    <h2>Pots</h2>
+    <table class="runs"><thead><tr><th>Pot</th><th>Weight</th></tr></thead><tbody>
+      {% for p, w in view.by_pot.items() | sort(attribute=1, reverse=true) %}
+      <tr><td>{{ p }}</td><td class="mono">{{ w | pct }}</td></tr>{% endfor %}</tbody></table>
+  </div>
+</section>
+
+<section>
+  <h2>Positions</h2>
+  <table class="runs">
+    <thead><tr><th>Ticker</th><th>Name</th><th>Pot</th><th>Qty</th><th>Price</th><th>Value</th><th>EUR</th><th>Weight</th><th>P&L</th><th>Theme</th><th>Price source</th></tr></thead>
+    <tbody>
+    {% for p in view.positions %}
+      <tr>
+        <td><strong>{{ p.instrument.ticker }}</strong></td>
+        <td class="small">{{ p.instrument.name }}</td>
+        <td>{{ p.position.pot.value }}</td>
+        <td class="mono">{{ p.position.quantity | num(2) }}</td>
+        <td class="mono">{{ p.price | num(2) }} {{ p.position.currency }}</td>
+        <td class="mono">{{ p.value_native | num(0) }} {{ p.position.currency }}</td>
+        <td class="mono">€{{ p.value_eur | num(0) }}</td>
+        <td class="mono">{{ p.weight | pct }}</td>
+        <td class="mono {% if p.pnl_pct is not none and p.pnl_pct < 0 %}red{% elif p.pnl_pct is not none %}green{% endif %}">{% if p.pnl_pct is not none %}{{ '%+.1f' % p.pnl_pct }}%{% else %}—{% endif %}</td>
+        <td class="small">{{ p.theme }}</td>
+        <td class="muted small">{{ p.price_source }} · {{ p.price_as_of }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+{% if pending %}
+<section>
+  <h2>Pending snapshots</h2>
+  {% for batch, rows in pending.items() %}
+  <div class="pending">
+    <div class="pending-head"><strong>{{ batch }}</strong> · {{ rows | length }} lines · as of {{ rows[0].as_of }}
+      <form method="post" action="/positions/confirm" style="display:inline"><input type="hidden" name="batch" value="{{ batch }}"><button type="submit">Confirm</button></form>
+      <form method="post" action="/positions/discard" style="display:inline"><input type="hidden" name="batch" value="{{ batch }}"><button type="submit" class="secondary">Discard</button></form>
+    </div>
+    <table class="runs small"><thead><tr><th>Ticker</th><th>Pot</th><th>Qty</th><th>Last price</th><th>Value</th><th>Return</th><th>Note</th></tr></thead><tbody>
+      {% for r in rows %}<tr><td>{{ instruments[r.instrument_id].ticker }}</td><td>{{ r.pot.value }}</td>
+        <td class="mono">{{ r.quantity | num(2) }}</td><td class="mono">{{ r.last_price | num(2) }} {{ r.currency }}</td>
+        <td class="mono">{{ r.value_native | num(0) }}</td><td class="mono">{% if r.return_pct is not none %}{{ '%+.1f' % r.return_pct }}%{% endif %}</td>
+        <td class="muted">{{ r.note or '' }}</td></tr>{% endfor %}</tbody></table>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}

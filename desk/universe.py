@@ -37,6 +37,7 @@ def sync_instruments(session: Session, items: list[dict] | None = None) -> int:
             sector=it.get("sector"),
             region=it.get("region"),
             source_symbol=it.get("source_symbol"),
+            isin=it.get("isin"),
         )
         if row is None:
             session.add(Instrument(ticker=it["ticker"], **payload))

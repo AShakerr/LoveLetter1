@@ -22,6 +22,10 @@ class InstrumentKind(StrEnum):
     # with a tradable=False flag rather than being smuggled into `observations`.
     index = "index"
     fx = "fx"
+    cash = "cash"
+    other = (
+        "other"  # unidentified lines (e.g. behind Revolut's "Show more") until the user names them
+    )
 
 
 class Instrument(SQLModel, table=True):
@@ -38,6 +42,7 @@ class Instrument(SQLModel, table=True):
     region: str | None = None
     # symbol used at the data source when it differs from the display ticker (e.g. VUSA -> VUSA.AS)
     source_symbol: str | None = None
+    isin: str | None = None
 
 
 class Price(SQLModel, table=True):
@@ -115,6 +120,13 @@ class Position(SQLModel, table=True):
     pot: Pot = Pot.brokerage
     as_of: dt.date
     confirmed_by_user: bool = False
+    # what the screenshot / seed said, used when no market price exists for the instrument
+    last_price: float | None = None
+    value_native: float | None = None
+    return_pct: float | None = None
+    source: str = "manual"  # manual | seed | screenshot
+    batch: str | None = Field(default=None, index=True)
+    note: str | None = None
     # phase 3: per-position overrides and thesis
     stop_pct: float | None = None
     kill_condition: str | None = None
@@ -132,6 +144,8 @@ class Report(SQLModel, table=True):
     sha256: str = Field(index=True, unique=True)
     extracted_at: dt.datetime | None = None
     raw_json: dict | None = Field(default=None, sa_column=Column(JSON))
+    flagged: bool = False  # extraction failed validation twice; raw_json is null
+    flag_reason: str | None = None
 
 
 class HouseView(SQLModel, table=True):

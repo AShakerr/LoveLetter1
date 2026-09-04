@@ -54,6 +54,47 @@ def run_daily(
     return summary
 
 
+def process_inbox(settings: Settings | None = None, completer=None) -> dict[str, list[dict]]:
+    """Ingest every PDF in inbox/ and every screenshot in inbox/portfolio/. Needs ANTHROPIC_API_KEY."""
+    from desk.ingest.revolut import process_portfolio_inbox
+    from desk.ingest.safra import process_reports_inbox
+    from desk.llm import get_completer
+
+    settings = settings or get_settings()
+    settings.ensure_dirs()
+    has_files = (
+        any(settings.reports_inbox.glob("*.pdf"))
+        or any(settings.reports_inbox.glob("*.PDF"))
+        or any(
+            p
+            for p in settings.portfolio_inbox.iterdir()
+            if p.is_file() and not p.name.startswith(".")
+        )
+    )
+    if not has_files:
+        return {"reports": [], "portfolio": []}
+    completer = completer or get_completer(settings)
+    init_db(settings)
+    with session_scope(settings) as session:
+        return {
+            "reports": process_reports_inbox(session, completer, settings),
+            "portfolio": process_portfolio_inbox(session, completer, settings),
+        }
+
+
+def scan_inbox(settings: Settings | None = None) -> None:
+    """Scheduler entry point: silent when the inbox is empty or the API key is missing."""
+    settings = settings or get_settings()
+    try:
+        result = process_inbox(settings)
+    except RuntimeError as exc:  # no API key
+        log.warning("inbox scan skipped: %s", exc)
+        return
+    for kind, items in result.items():
+        for it in items:
+            log.info("inbox %s: %s", kind, it)
+
+
 def backup_sqlite(settings: Settings | None = None) -> Path:
     """Consistent online backup via sqlite3's backup API; keeps the newest N files."""
     settings = settings or get_settings()

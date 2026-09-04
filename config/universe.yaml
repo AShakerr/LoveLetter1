@@ -8,19 +8,26 @@ instruments:
   # ---- held (positions confirmed in phase 2) ---------------------------------------------
   - {ticker: TSLA, name: Tesla Inc, kind: stock, currency: USD, exchange: NASDAQ, tradable: true,
      theme: "EV / autonomy", sector: Consumer Discretionary, region: USA, news_sentiment: true}
-  - {ticker: VUSA, name: Vanguard S&P 500 UCITS ETF (USD dist, EUR line), kind: etf, currency: EUR,
-     exchange: Euronext Amsterdam, tradable: true, theme: "diversified core", sector: Broad, region: USA,
-     source_symbol: VUSA.AS}
-  # TODO confirm: X9I1 and 4COP are Xetra codes from the Revolut screenshot; names must be verified in phase 2.
-  - {ticker: X9I1, name: "UCITS ETF X9I1 (name to confirm)", kind: etf, currency: EUR, exchange: Xetra,
-     tradable: true, theme: "unknown (confirm)", sector: Unknown, region: Unknown, source_symbol: X9I1.DE}
-  - {ticker: 4COP, name: "Global X Copper Miners UCITS ETF (to confirm)", kind: etf, currency: EUR,
+  - {ticker: VUSA, name: Vanguard S&P 500 UCITS ETF Dist, isin: IE00B3XXRP09, kind: etf, currency: EUR,
+     exchange: Xetra, tradable: true, theme: "diversified core", sector: Broad, region: USA,
+     source_symbol: VUSA.DE}
+  # Identifiers from docs/seed/positions_2026-09-04.json. X9I1's ISIN still needs confirming in Revolut.
+  - {ticker: X9I1, name: Amundi MSCI Emerging Markets Swap UCITS ETF USD Acc, isin: LU1681045453, kind: etf,
+     currency: EUR, exchange: Xetra, tradable: true, theme: "emerging markets", sector: Broad,
+     region: Emerging Markets, source_symbol: X9I1.DE}
+  - {ticker: 4COP, name: Global X Copper Miners UCITS ETF USD Acc, isin: IE0003Z9E2Y3, kind: etf, currency: EUR,
      exchange: Xetra, tradable: true, theme: "copper / electrification", sector: Materials, region: Global,
      source_symbol: 4COP.DE}
-  - {ticker: SPCX, name: SpaceX (private, via Revolut), kind: private, currency: USD, exchange: null,
+  - {ticker: SPCX, name: SpaceX (Revolut private-company tracker), kind: private, currency: USD, exchange: null,
      tradable: true, theme: "space / private", sector: Industrials, region: USA, price_source: none}
-  - {ticker: REVOLUT_COMMODITIES, name: Revolut commodities pot (composition to confirm), kind: commodity,
+  - {ticker: COMMODITIES_POT, name: Revolut commodities pot (composition to confirm), kind: commodity,
      currency: USD, exchange: null, tradable: true, theme: gold, sector: Commodities, region: Global,
+     price_source: none}
+  - {ticker: ROBO_ADVISOR, name: Revolut Robo-Advisor, kind: other, currency: USD, tradable: true,
+     theme: "diversified core", sector: Broad, region: Global, price_source: none}
+  - {ticker: UNKNOWN_BROKERAGE, name: "Brokerage lines behind 'Show more' (identify)", kind: other, currency: USD,
+     tradable: false, theme: "unknown (confirm)", price_source: none}
+  - {ticker: CASH_USD, name: USD cash (brokerage), kind: cash, currency: USD, tradable: false, theme: cash,
      price_source: none}
   # ---- watchlist ---------------------------------------------------------------------------
   - {ticker: NVDA, name: NVIDIA Corp, kind: stock, currency: USD, exchange: NASDAQ, tradable: true,

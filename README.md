@@ -8,7 +8,7 @@ It does not trade and it is not investment advice.
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Skeleton, all fetchers with recorded fixtures, daily scheduler, tape dashboard | **done** |
-| 2 | Safra PDF extraction, seed house views, Revolut screenshot ingestion, portfolio view | not started |
+| 2 | Safra PDF extraction, seed house views, Revolut screenshot ingestion, portfolio view | **done** |
 | 3 | Regime, conviction score, rules engine, decisions | not started |
 | 4 | Self-scoring, weekly digest, Claude-written reasoning | not started |
 
@@ -19,10 +19,30 @@ uv sync
 cp .env.example .env            # fill in keys; basic auth user/pass are required
 uv run desk init-db
 uv run desk load-fixtures       # offline demo data, tagged source='fixture:*'
+uv run desk seed                # August house views, 4 Sep positions snapshot, regime snapshot
 uv run desk fetch               # live data (needs network + keys)
 uv run desk serve               # http://localhost:8000
 uv run pytest                   # network is disabled for every test
 ```
+
+`desk init-db` also adds any columns the models gained since the database was created, so an existing
+`data/desk.sqlite3` keeps working across phases.
+
+## House views and portfolio (phase 2)
+
+- Drop Safra PDFs in `inbox/` (or `/data/inbox` in Docker). They are hashed, sent to Claude with
+  `prompts/safra_extract.md`, validated (one retry with the validation error appended), written to `reports`
+  and `house_views`, and moved to `archive/reports/YYYY-MM-DD_<kind>.pdf`. A report that fails twice is
+  stored with `raw_json = null` and shown flagged on the House views page.
+- `changed_from` is resolved per (scope, key) against the most recent prior view in the same tier. The
+  `market_views` tactical grid is a separate tier and never becomes the house view.
+- Drop Revolut screenshots in `inbox/portfolio/`. Claude vision extracts the lines into a pending batch;
+  nothing is live until you press Confirm on the Portfolio page (or `desk positions --confirm <batch>`).
+- The scheduler scans both inboxes every 5 minutes and the daily job processes them too. Requires
+  `ANTHROPIC_API_KEY`; the model is `DESK_CLAUDE_MODEL` (default `claude-sonnet-5`).
+- Portfolio page: EUR valuation at the latest EURUSD=X / EURGBP=X close, theme, FX and pot weights, and the
+  limit bars from `config/limits.yaml`. Positions are priced from `prices` when a row exists, else from the
+  snapshot's last price.
 
 `DESK_ALLOW_NO_AUTH=1 uv run desk serve` skips basic auth for local development only.
 
@@ -69,7 +89,8 @@ uv run python scripts/record_fixtures.py
 ```
 desk/            package: config, models, db, sources/, persist, jobs, scheduler, tape, web/, cli
 config/          universe.yaml, limits.yaml, manual_observations.yaml (regime_fit.yaml in phase 3)
-docs/BRIEF.md    the spec; docs/seed/ for seeded house views and positions (phase 2)
+docs/BRIEF.md    the spec; docs/seed/ seeded house views, positions and regime; docs/seasonality_evidence.md
+prompts/         Claude extraction prompts (Safra PDFs, Revolut screenshots)
 tests/           pytest, network off; tests/fixtures/ recorded payloads
 scripts/         fixture recording
 ```

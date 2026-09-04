@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     # locations
     data_dir: Path = Field(default=REPO_ROOT / "data", alias="DESK_DATA_DIR")
     config_dir: Path = Field(default=REPO_ROOT / "config", alias="DESK_CONFIG_DIR")
+    inbox_dir: Path = Field(default=REPO_ROOT / "inbox", alias="DESK_INBOX_DIR")
+    archive_dir: Path = Field(default=REPO_ROOT / "archive", alias="DESK_ARCHIVE_DIR")
+    seed_dir: Path = Field(default=REPO_ROOT / "docs" / "seed", alias="DESK_SEED_DIR")
+    prompts_dir: Path = Field(default=REPO_ROOT / "prompts", alias="DESK_PROMPTS_DIR")
     tz: str = Field(default="Europe/Berlin", alias="TZ")
 
     # behaviour
@@ -31,10 +35,13 @@ class Settings(BaseSettings):
     daily_job_minute: int = Field(default=0, alias="DESK_DAILY_MINUTE")
     backup_hour: int = Field(default=2, alias="DESK_BACKUP_HOUR")
     backups_to_keep: int = Field(default=30, alias="DESK_BACKUPS_KEEP")
+    inbox_scan_minutes: int = Field(default=5, alias="DESK_INBOX_SCAN_MINUTES")
     price_lookback_days: int = Field(default=400, alias="DESK_PRICE_LOOKBACK_DAYS")
     alphavantage_daily_budget: int = Field(default=25, alias="DESK_ALPHAVANTAGE_BUDGET")
     http_timeout_s: float = Field(default=20.0, alias="DESK_HTTP_TIMEOUT")
     scheduler_enabled: bool = Field(default=True, alias="DESK_SCHEDULER_ENABLED")
+    # The brief names claude-sonnet-4-5 "or whatever is current"; Sonnet 5 is the current Sonnet.
+    claude_model: str = Field(default="claude-sonnet-5", alias="DESK_CLAUDE_MODEL")
 
     @property
     def db_path(self) -> Path:
@@ -53,21 +60,30 @@ class Settings(BaseSettings):
         return self.data_dir / "backups"
 
     @property
-    def inbox_dir(self) -> Path:
-        return self.data_dir / "inbox"
+    def reports_inbox(self) -> Path:
+        return self.inbox_dir
 
     @property
-    def archive_dir(self) -> Path:
-        return self.data_dir / "archive" / "reports"
+    def portfolio_inbox(self) -> Path:
+        return self.inbox_dir / "portfolio"
+
+    @property
+    def reports_archive(self) -> Path:
+        return self.archive_dir / "reports"
+
+    @property
+    def portfolio_archive(self) -> Path:
+        return self.archive_dir / "portfolio"
 
     def ensure_dirs(self) -> None:
         for d in (
             self.data_dir,
             self.cache_dir,
             self.backup_dir,
-            self.inbox_dir,
-            self.inbox_dir / "portfolio",
-            self.archive_dir,
+            self.reports_inbox,
+            self.portfolio_inbox,
+            self.reports_archive,
+            self.portfolio_archive,
         ):
             d.mkdir(parents=True, exist_ok=True)
 

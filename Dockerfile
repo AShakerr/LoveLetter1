@@ -1,7 +1,8 @@
 FROM python:3.12-slim-bookworm
 
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy \
-    DESK_DATA_DIR=/data DESK_CONFIG_DIR=/app/config TZ=Europe/Berlin
+    DESK_DATA_DIR=/data DESK_INBOX_DIR=/data/inbox DESK_ARCHIVE_DIR=/data/archive \
+    DESK_CONFIG_DIR=/app/config TZ=Europe/Berlin
 
 RUN apt-get update && apt-get install -y --no-install-recommends sqlite3 tzdata ca-certificates \
     && rm -rf /var/lib/apt/lists/*

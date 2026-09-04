@@ -6,9 +6,10 @@ import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from desk.config import Settings, get_settings
-from desk.jobs import backup_sqlite, run_daily
+from desk.jobs import backup_sqlite, run_daily, scan_inbox
 
 log = logging.getLogger(__name__)
 
@@ -35,6 +36,15 @@ def build_scheduler(settings: Settings | None = None) -> BackgroundScheduler:
         name="Nightly SQLite backup",
         replace_existing=True,
         misfire_grace_time=3600,
+        coalesce=True,
+        max_instances=1,
+    )
+    sched.add_job(
+        scan_inbox,
+        IntervalTrigger(minutes=settings.inbox_scan_minutes, timezone=settings.tz),
+        id="inbox_scan",
+        name="Inbox scan",
+        replace_existing=True,
         coalesce=True,
         max_instances=1,
     )

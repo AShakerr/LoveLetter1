@@ -11,9 +11,9 @@
   <header class="top">
     <div class="brand">desk <span class="muted">v{{ version }}</span></div>
     <nav>
-      <a href="/" class="active">Tape</a>
-      <a class="disabled" title="phase 2">Portfolio</a>
-      <a class="disabled" title="phase 2">House views</a>
+      <a href="/" class="{% if active == 'tape' %}active{% endif %}">Tape</a>
+      <a href="/portfolio" class="{% if active == 'portfolio' %}active{% endif %}">Portfolio</a>
+      <a href="/house-views" class="{% if active == 'house' %}active{% endif %}">House views</a>
       <a class="disabled" title="phase 3">Decisions</a>
       <a class="disabled" title="phase 4">Track record</a>
     </nav>

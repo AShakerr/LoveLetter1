@@ -62,6 +62,51 @@ def load_fixtures_cmd(
 
 
 @app.command()
+def seed() -> None:
+    """Load docs/seed/ (August house views, positions snapshot, regime snapshot)."""
+    _log(False)
+    from desk.db import init_db, session_scope
+    from desk.seed import load_all_seeds
+    from desk.universe import sync_instruments
+
+    settings = get_settings()
+    init_db(settings)
+    with session_scope(settings) as s:
+        sync_instruments(s)
+        typer.echo(json.dumps(load_all_seeds(s, settings), indent=1, default=str))
+
+
+@app.command()
+def ingest(verbose: bool = False) -> None:
+    """Process inbox/ (Safra PDFs) and inbox/portfolio/ (Revolut screenshots) through Claude."""
+    _log(verbose)
+    from desk.jobs import process_inbox
+
+    typer.echo(json.dumps(process_inbox(get_settings()), indent=1, default=str))
+
+
+@app.command()
+def positions(
+    confirm: str = typer.Option(None, help="Batch id to confirm"),
+    discard: str = typer.Option(None, help="Batch id to discard"),
+) -> None:
+    """List pending position batches, or confirm / discard one."""
+    from desk.db import init_db, session_scope
+    from desk.ingest.revolut import confirm_batch, discard_batch, pending_batches
+
+    settings = get_settings()
+    init_db(settings)
+    with session_scope(settings) as s:
+        if confirm:
+            typer.echo(f"confirmed {confirm_batch(s, confirm)} positions in {confirm}")
+        elif discard:
+            typer.echo(f"discarded {discard_batch(s, discard)} positions in {discard}")
+        else:
+            for batch, rows in pending_batches(s).items():
+                typer.echo(f"{batch}: {len(rows)} positions pending")
+
+
+@app.command()
 def backup() -> None:
     """Write a consistent SQLite backup to data/backups/."""
     from desk.jobs import backup_sqlite

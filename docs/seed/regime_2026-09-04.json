@@ -1,0 +1,59 @@
+{
+  "date": "2026-09-04",
+  "label": "Energy-shock inflation, central banks hiking, oil shock, equity vol complacent.",
+  "inflation_state": "energy_shock",
+  "policy_state": "hiking",
+  "oil_state": "shock",
+  "vol_state": "complacent",
+  "inputs_json": {
+    "inflation": {
+      "us_cpi_headline_yoy": 3.4, "us_cpi_core_yoy": 2.5, "us_cpi_ref": "July 2026, BLS, released 12 Aug",
+      "us_pce_12m": 3.7, "us_pce_ref": "Warsh, Jackson Hole 28 Aug",
+      "ez_hicp_headline_yoy": 3.3, "ez_hicp_core_yoy": 2.4, "ez_hicp_energy_yoy": 14.3, "ez_ref": "August 2026 flash, Eurostat, 1 Sep",
+      "headline_minus_core_us": 0.9, "headline_minus_core_ez": 0.9,
+      "rule": "energy_shock if headline - core > 0.75pp"
+    },
+    "policy": {
+      "fed_target_range": "3.50-3.75", "fed_effective": 3.63, "fed_chair": "Kevin Warsh (sworn in 22 May 2026)",
+      "fed_last_decision": "29 Jul hold, 9-3, Hammack/Kashkari/Logan dissented for a 25bp hike",
+      "fed_next": "15-16 Sep, market ~50/50 hike vs hold after Waller pushback on 3 Sep",
+      "ecb_deposit": 2.25, "ecb_last": "June 2026 +25bp, first hike in three years; July hold",
+      "ecb_next": "10 Sep, all 65 economists polled expect +25bp to 2.50%",
+      "safra_fed_dec26": 4.25, "safra_ecb_dec26": 2.50,
+      "us_2y": 4.35, "us_10y": 4.77, "us_30y": 5.24, "bund_10y": 3.36,
+      "rule": "hiking: last move or next expected move is a hike at either Fed or ECB"
+    },
+    "oil": {
+      "brent": 95.8, "wti": 91.6, "brent_ytd_pct": 57.5, "brent_1m_pct": 20.6,
+      "hormuz": "closed to most commercial traffic since 28 Feb 2026; 6-13 transits/day vs 85-130 normal",
+      "latest": "1-2 Sep US strikes on ~100 Iranian targets incl. two tankers; Iranian missiles at Kuwait/Bahrain; Saudi tanker attacked",
+      "safra_brent_6_12m": "75-80",
+      "rule": "shock if Brent > 90 and > +15% over 60 days"
+    },
+    "vol": {
+      "vix": 14.3, "vix_ref": "3 Sep close 14.32",
+      "rule": "complacent < 15; normal 15-25; stressed > 25"
+    },
+    "context": {
+      "sp500": 7747, "sp500_ytd_pct": 12.9, "sp500_record_closes_2026": 27,
+      "gold": 4470, "gold_ath": 5608, "gold_ath_date": "2026-01", "gold_ytd_pct": 3.5,
+      "silver": 66.72, "silver_ytd_pct": -6.4, "copper_lb": 6.572, "copper_ytd_pct": 15.7,
+      "btc": 80800, "btc_ytd_pct": -7.7, "eth": 2507, "eth_ytd_pct": -15.5,
+      "us_payrolls_july": -23000, "us_payrolls_revisions": -103000, "us_unemployment": 4.1, "adp_august": 38000,
+      "sectors_ytd": {"Energy": 42.3, "Materials": 15.9, "Industrials": 12.6, "Health Care": 10.1, "Staples": 9.6, "Real Estate": 9.3, "Financials": 5.4, "Utilities": -1.4, "Discretionary": -3.0, "Comm Services": -5.6, "Technology": null},
+      "egx30": 56270, "usd_egp": 50.9, "egypt_cpi": 14.9, "cbe_deposit": 19.0, "imf": "7th EFF review completed 30 Jul, $1.8bn released",
+      "midterms": "3 Nov; Polymarket ~87% Dem House, Senate ~coin flip"
+    },
+    "sources": [
+      "https://www.bls.gov/news.release/cpi.nr0.htm",
+      "https://ec.europa.eu/eurostat/web/products-euro-indicators/w/2-01092026-ap",
+      "https://www.federalreserve.gov/newsevents/pressreleases/monetary20260729a.htm",
+      "https://www.federalreserve.gov/newsevents/speech/warsh20260828a.htm",
+      "https://www.federalreserve.gov/releases/h15/",
+      "https://tradingeconomics.com/commodity/brent-crude-oil",
+      "https://tradingeconomics.com/vix:ind",
+      "https://www.investing.com/news/stock-market-news/sp-500-sector-performance-energy-leads-with-42-ytd-gain-in-2026-93CH-4883146",
+      "https://www.imf.org/en/news/articles/2026/07/30/pr26271-egypt-imf-completes-the-7th-review-under-eff-and-2nd-review-under-the-rsf"
+    ]
+  }
+}

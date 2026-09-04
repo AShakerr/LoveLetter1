@@ -43,7 +43,37 @@ def reset_engine() -> None:
 
 
 def init_db(settings: Settings | None = None) -> None:
-    SQLModel.metadata.create_all(get_engine(settings))
+    engine = get_engine(settings)
+    SQLModel.metadata.create_all(engine)
+    _add_missing_columns(engine)
+
+
+def _add_missing_columns(engine: Engine) -> None:
+    """Forward-only schema upkeep: add columns that models gained since the database was created.
+
+    SQLite supports ADD COLUMN; anything more involved needs a real migration."""
+    from sqlalchemy import text
+
+    with engine.begin() as conn:
+        for table in SQLModel.metadata.sorted_tables:
+            existing = {row[1] for row in conn.execute(text(f'PRAGMA table_info("{table.name}")'))}
+            for col in table.columns:
+                if col.name in existing:
+                    continue
+                ddl = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col.type.compile(engine.dialect)}'
+                if col.default is not None and getattr(col.default, "is_scalar", False):
+                    v = col.default.arg
+                    lit = (
+                        "1"
+                        if v is True
+                        else "0"
+                        if v is False
+                        else repr(v)
+                        if isinstance(v, str)
+                        else str(v)
+                    )
+                    ddl += f" DEFAULT {lit}"
+                conn.execute(text(ddl))
 
 
 @contextmanager
