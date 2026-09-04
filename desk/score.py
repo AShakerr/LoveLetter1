@@ -200,9 +200,10 @@ def f_regime(inst: Instrument, regime: Regime | None, fit: RegimeFit | None) -> 
     value, inputs = fit.score(inst.theme, regime)
     inputs["regime"] = regime.label
     if value is None:
-        return Factor(
-            None, inputs, inputs.get("current", {}).get("note") or "theme not in regime_fit.yaml"
+        note = (
+            inputs.get("current", {}).get("note") or f"theme {inst.theme!r} not in regime_fit.yaml"
         )
+        return Factor(2.5, inputs, note + "; neutral 2.5 used")
     return Factor(clamp(value), inputs)
 
 

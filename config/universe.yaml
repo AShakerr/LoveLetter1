@@ -33,6 +33,12 @@ instruments:
      theme: us_broad, sector: Broad, region: Global, price_source: none}
   - {ticker: UNKNOWN_BROKERAGE, name: "Brokerage lines behind 'Show more' (identify)", kind: other, currency: USD,
      tradable: false, theme: "unknown (confirm)", price_source: none}
+  # ---- held outside Revolut (docs/seed/positions_2026-09-04.json, pot: external) ----------------
+  - {ticker: WHOOP, name: WHOOP (EquityZen SPV), kind: private, currency: USD, tradable: false,
+     theme: private_health_wearables, sector: Healthcare, region: USA, price_source: none, stale_after_days: 90}
+  # TODO confirm: which broker holds Orange and whether Revolut can trade it; tradable assumed true.
+  - {ticker: ORA, name: Orange SA, isin: FR0000133308, kind: stock, currency: EUR, exchange: Euronext Paris,
+     tradable: true, theme: eu_telecom_income, sector: Communication Services, region: Euro area, source_symbol: ORA.PA}
   - {ticker: CASH_USD, name: USD cash (brokerage), kind: cash, currency: USD, tradable: false, theme: cash,
      price_source: none}
   # ---- watchlist ---------------------------------------------------------------------------

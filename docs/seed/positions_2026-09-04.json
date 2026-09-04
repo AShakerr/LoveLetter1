@@ -3,46 +3,216 @@
     "source": "Revolut app screenshot, 4 Sep 2026, 11:23 local",
     "as_of": "2026-09-04",
     "confirmed_by_user": false,
-    "note": "Six brokerage holdings were visible. $4,474.93 of brokerage sits behind 'Show more' and the commodities pot composition is collapsed. Totals below are from the pot headers, so they are authoritative; the unidentified remainder is derived.",
+    "note": "Six brokerage holdings were visible. $4,474.93 of brokerage sits behind 'Show more' and the commodities pot composition is collapsed. Totals below are from the pot headers, so they are authoritative; the unidentified remainder is derived. WHOOP (EquityZen SPV, outside Revolut) added 4 Sep from Ahmed's statement: USD 25,735, no return % given. Orange SA (342 shares, held outside Revolut) added 4 Sep from Ahmed's statement; priced at EUR 15.97 (stockanalysis.com, 21 Aug 2026 close) at EURUSD 1.16, so the USD value is an estimate until the first live fetch.",
     "totals_usd": {
       "brokerage": 29884.52,
       "commodities": 49676.18,
       "robo_advisor": 620.85,
-      "total": 80181.55
+      "whoop_spv": 25735.0,
+      "total": 112252.17,
+      "orange_external": 6335.62
     },
     "identifiers": {
-      "SPCX": {"name": "SpaceX (Revolut private-company tracker)", "kind": "private", "currency": "USD", "tradable": true, "liquidity": "periodic pricing, treat as illiquid"},
-      "TSLA": {"name": "Tesla", "kind": "stock", "currency": "USD", "exchange": "NASDAQ", "yfinance": "TSLA"},
-      "X9I1": {"name": "Amundi MSCI Emerging Markets Swap UCITS ETF USD Acc", "isin": "LU1681045453", "kind": "etf", "currency": "EUR", "exchange": "XETRA", "yfinance": "X9I1.DE", "verify": "confirm ISIN in Revolut instrument details; an Amundi Core MSCI EM (LU1437017350) line also exists"},
-      "4COP": {"name": "Global X Copper Miners UCITS ETF USD Acc", "isin": "IE0003Z9E2Y3", "kind": "etf", "currency": "EUR", "exchange": "XETRA", "yfinance": "4COP.DE"},
-      "VUSA": {"name": "Vanguard S&P 500 UCITS ETF Dist", "isin": "IE00B3XXRP09", "kind": "etf", "currency": "EUR", "exchange": "XETRA or Euronext Amsterdam", "yfinance": "VUSA.DE (or VUSA.AS)", "verify": "Revolut priced it in EUR at 126.47; both lines are EUR"}
+      "SPCX": {
+        "name": "SpaceX (Revolut private-company tracker)",
+        "kind": "private",
+        "currency": "USD",
+        "tradable": true,
+        "liquidity": "periodic pricing, treat as illiquid"
+      },
+      "TSLA": {
+        "name": "Tesla",
+        "kind": "stock",
+        "currency": "USD",
+        "exchange": "NASDAQ",
+        "yfinance": "TSLA"
+      },
+      "X9I1": {
+        "name": "Amundi MSCI Emerging Markets Swap UCITS ETF USD Acc",
+        "isin": "LU1681045453",
+        "kind": "etf",
+        "currency": "EUR",
+        "exchange": "XETRA",
+        "yfinance": "X9I1.DE",
+        "verify": "confirm ISIN in Revolut instrument details; an Amundi Core MSCI EM (LU1437017350) line also exists"
+      },
+      "4COP": {
+        "name": "Global X Copper Miners UCITS ETF USD Acc",
+        "isin": "IE0003Z9E2Y3",
+        "kind": "etf",
+        "currency": "EUR",
+        "exchange": "XETRA",
+        "yfinance": "4COP.DE"
+      },
+      "VUSA": {
+        "name": "Vanguard S&P 500 UCITS ETF Dist",
+        "isin": "IE00B3XXRP09",
+        "kind": "etf",
+        "currency": "EUR",
+        "exchange": "XETRA or Euronext Amsterdam",
+        "yfinance": "VUSA.DE (or VUSA.AS)",
+        "verify": "Revolut priced it in EUR at 126.47; both lines are EUR"
+      },
+      "WHOOP": {
+        "name": "WHOOP (EquityZen SPV)",
+        "kind": "private",
+        "currency": "USD",
+        "tradable": false,
+        "liquidity": "SPV; no exit until a liquidity event. Mark to last stated value; stale after 90 days.",
+        "pot": "external"
+      },
+      "ORA": {
+        "name": "Orange SA",
+        "isin": "FR0000133308",
+        "kind": "stock",
+        "currency": "EUR",
+        "exchange": "Euronext Paris",
+        "yfinance": "ORA.PA",
+        "pot": "external",
+        "dividend_yield_pct": 4.89,
+        "verify": "which broker holds it; average cost 14.01 supplied by the user 4 Sep 2026"
+      }
     }
   },
   "positions": [
-    {"ticker": "CASH_USD", "pot": "brokerage", "quantity": 4240.79, "avg_cost": 1.0, "currency": "USD", "value_usd": 4240.79, "return_pct": null},
-    {"ticker": "SPCX", "pot": "brokerage", "quantity": 75.73, "avg_cost": null, "last_price": 150.43, "currency": "USD", "value_usd": 11392.53, "return_pct": -9.01},
-    {"ticker": "TSLA", "pot": "brokerage", "quantity": 10.26, "avg_cost": null, "last_price": 367.16, "currency": "USD", "value_usd": 3769.26, "return_pct": -8.19},
-    {"ticker": "X9I1", "pot": "brokerage", "quantity": 306.48, "avg_cost": null, "last_price": 7.75, "currency": "EUR", "value_usd": 2755.14, "return_pct": 16.17},
-    {"ticker": "4COP", "pot": "brokerage", "quantity": 25.6, "avg_cost": null, "last_price": 61.26, "currency": "EUR", "value_usd": 1819.22, "return_pct": 4.76},
-    {"ticker": "VUSA", "pot": "brokerage", "quantity": 9.76, "avg_cost": null, "last_price": 126.47, "currency": "EUR", "value_usd": 1432.65, "return_pct": 12.66},
-    {"ticker": "UNKNOWN_BROKERAGE", "pot": "brokerage", "quantity": null, "avg_cost": null, "currency": "USD", "value_usd": 4474.93, "return_pct": null, "note": "Behind 'Show more'. Derived: 29884.52 minus the six visible lines."},
-    {"ticker": "COMMODITIES_POT", "pot": "commodities", "quantity": null, "avg_cost": null, "currency": "USD", "value_usd": 49676.18, "return_pct": -15.59, "note": "Composition unknown. A -15.6% return with gold ~20% below its January high is consistent with a gold-heavy pot bought near the top; confirm before assigning theme='gold'."},
-    {"ticker": "ROBO_ADVISOR", "pot": "robo", "quantity": null, "avg_cost": null, "currency": "USD", "value_usd": 620.85, "return_pct": 9.62, "theme": "diversified"}
+    {
+      "ticker": "CASH_USD",
+      "pot": "brokerage",
+      "quantity": 4240.79,
+      "avg_cost": 1.0,
+      "currency": "USD",
+      "value_usd": 4240.79,
+      "return_pct": null
+    },
+    {
+      "ticker": "SPCX",
+      "pot": "brokerage",
+      "quantity": 75.73,
+      "avg_cost": null,
+      "last_price": 150.43,
+      "currency": "USD",
+      "value_usd": 11392.53,
+      "return_pct": -9.01
+    },
+    {
+      "ticker": "TSLA",
+      "pot": "brokerage",
+      "quantity": 10.26,
+      "avg_cost": null,
+      "last_price": 367.16,
+      "currency": "USD",
+      "value_usd": 3769.26,
+      "return_pct": -8.19
+    },
+    {
+      "ticker": "X9I1",
+      "pot": "brokerage",
+      "quantity": 306.48,
+      "avg_cost": null,
+      "last_price": 7.75,
+      "currency": "EUR",
+      "value_usd": 2755.14,
+      "return_pct": 16.17
+    },
+    {
+      "ticker": "4COP",
+      "pot": "brokerage",
+      "quantity": 25.6,
+      "avg_cost": null,
+      "last_price": 61.26,
+      "currency": "EUR",
+      "value_usd": 1819.22,
+      "return_pct": 4.76
+    },
+    {
+      "ticker": "VUSA",
+      "pot": "brokerage",
+      "quantity": 9.76,
+      "avg_cost": null,
+      "last_price": 126.47,
+      "currency": "EUR",
+      "value_usd": 1432.65,
+      "return_pct": 12.66
+    },
+    {
+      "ticker": "UNKNOWN_BROKERAGE",
+      "pot": "brokerage",
+      "quantity": null,
+      "avg_cost": null,
+      "currency": "USD",
+      "value_usd": 4474.93,
+      "return_pct": null,
+      "note": "Behind 'Show more'. Derived: 29884.52 minus the six visible lines."
+    },
+    {
+      "ticker": "COMMODITIES_POT",
+      "pot": "commodities",
+      "quantity": null,
+      "avg_cost": null,
+      "currency": "USD",
+      "value_usd": 49676.18,
+      "return_pct": -15.59,
+      "note": "Composition unknown. A -15.6% return with gold ~20% below its January high is consistent with a gold-heavy pot bought near the top; confirm before assigning theme='gold'."
+    },
+    {
+      "ticker": "ROBO_ADVISOR",
+      "pot": "robo",
+      "quantity": null,
+      "avg_cost": null,
+      "currency": "USD",
+      "value_usd": 620.85,
+      "return_pct": 9.62,
+      "theme": "diversified"
+    },
+    {
+      "ticker": "WHOOP",
+      "pot": "external",
+      "quantity": null,
+      "avg_cost": null,
+      "currency": "USD",
+      "value_usd": 25735.0,
+      "return_pct": null,
+      "theme": "private_health_wearables",
+      "note": "User-stated value 4 Sep 2026. Not on Revolut; enter via manual_observations or the confirm UI."
+    },
+    {
+      "ticker": "ORA",
+      "pot": "external",
+      "quantity": 342,
+      "avg_cost": 14.01,
+      "last_price": 15.97,
+      "currency": "EUR",
+      "value_eur": 5461.74,
+      "value_usd": 6335.62,
+      "return_pct": 13.99,
+      "theme": "eu_telecom_income",
+      "note": "User-stated 342 shares 4 Sep 2026, average cost EUR 14.01 (user, 4 Sep). Price is the 21 Aug close; refresh on first fetch. Dividend yield ~4.9%."
+    }
   ],
   "derived": {
     "weights_pct": {
-      "commodities_pot": 61.95,
-      "SPCX": 14.21,
-      "unknown_brokerage": 5.58,
-      "cash": 5.29,
-      "TSLA": 4.70,
-      "X9I1": 3.44,
-      "4COP": 2.27,
-      "VUSA": 1.79,
-      "robo": 0.77
+      "commodities_pot": 44.25,
+      "WHOOP": 22.93,
+      "SPCX": 10.15,
+      "ORA": 5.64,
+      "unknown_brokerage": 3.99,
+      "cash": 3.78,
+      "TSLA": 3.36,
+      "X9I1": 2.45,
+      "4COP": 1.62,
+      "VUSA": 1.28,
+      "robo": 0.55
     },
-    "diversified_equity_pct": 6.0,
-    "single_and_private_pct": 18.9,
-    "avg_cost_note": "Revolut shows return % but not average cost. Back out avg_cost = last_price / (1 + return_pct/100) when loading: SPCX 165.32, TSLA 399.91, X9I1 6.67, 4COP 58.48, VUSA 112.26."
+    "diversified_equity_pct": 4.3,
+    "single_and_private_pct": 42.1,
+    "avg_cost_note": "Revolut shows return % but not average cost. Back out avg_cost = last_price / (1 + return_pct/100) when loading: SPCX 165.32, TSLA 399.91, X9I1 6.67, 4COP 58.48, VUSA 112.26.",
+    "private_illiquid_pct": 33.1,
+    "limit_breaches_on_load": [
+      "max_theme gold 44.25% > 35%",
+      "max_illiquid 33.1% > 15% (WHOOP 22.93% + SPCX 10.15%)",
+      "max_position WHOOP 22.93% > 15%",
+      "max_position commodities pot 44.25% > 15%",
+      "min_diversified_core 4.3% < 25% warn"
+    ]
   }
 }

@@ -46,6 +46,8 @@ class Instrument(SQLModel, table=True):
     # None for ordinary instruments. False for pots whose composition the user has not confirmed yet:
     # while False, max_position / max_theme raise a REVIEW flag instead of a MANDATORY TRIM.
     composition_confirmed: bool | None = None
+    # override for the stale_data rule and the red as-of date (e.g. 90 for an SPV marked to a stated value)
+    stale_after_days: int | None = None
 
 
 class Price(SQLModel, table=True):
@@ -111,6 +113,9 @@ class Pot(StrEnum):
     brokerage = "brokerage"
     commodities = "commodities"
     robo = "robo"
+    external = (
+        "external"  # held outside Revolut (SPVs, other brokers); valued from the user's statement
+    )
 
 
 class Position(SQLModel, table=True):

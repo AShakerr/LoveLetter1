@@ -112,6 +112,12 @@ page updates the confirmed positions; the decision text is never edited.
 - A pot with `composition_confirmed: false` (the Revolut commodities pot) turns max_position / max_theme
   into a REVIEW flag "confirm pot composition"; the Portfolio page has the confirm button, after which the
   TRIM is mandatory.
+- Positions held outside Revolut (the WHOOP SPV, Orange) live in the `external` pot and are valued from the
+  snapshot's stated price. A non-tradable line never receives a mandatory action: its limit and kill hits are
+  downgraded to REVIEW with a "cannot be executed" prefix. `stale_after_days` in `config/universe.yaml`
+  (90 for the SPV) drives the red as-of date and the stale_data rule.
+- `desk seed` extends an already-loaded snapshot batch with tickers the seed file gained since; the new rows
+  appear as pending on the Portfolio page until confirmed.
 - `desk/broker.py`: the PaperBroker mirrors every decision at the latest close into a paper book seeded from
   the confirmed positions; the Decisions page shows "Paper vs actual". `RevolutBroker` is a stub that raises
   NotImplementedError because Revolut has no API.

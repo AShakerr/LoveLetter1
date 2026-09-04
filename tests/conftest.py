@@ -20,6 +20,8 @@ def load_fixture(name: str):
 @pytest.fixture
 def settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> cfg.Settings:
     monkeypatch.setenv("DESK_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("DESK_INBOX_DIR", str(tmp_path / "inbox"))
+    monkeypatch.setenv("DESK_ARCHIVE_DIR", str(tmp_path / "archive"))
     monkeypatch.setenv("DESK_SCHEDULER_ENABLED", "0")
     monkeypatch.setenv("DESK_BASIC_AUTH_USER", "u")
     monkeypatch.setenv("DESK_BASIC_AUTH_PASS", "p")

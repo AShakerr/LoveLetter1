@@ -36,6 +36,9 @@ class ScreenshotPosition(BaseModel):
     pot: str = "brokerage"
     quantity: float | None = None
     last_price: float | None = None
+    avg_cost: float | None = (
+        None  # explicit when known (cash = 1.0); otherwise backed out from return_pct
+    )
     currency: str = "USD"
     value: float | None = None
     return_pct: float | None = None
@@ -171,7 +174,13 @@ def write_pending_positions(
         row = Position(
             instrument_id=inst.id,
             quantity=qty,
-            avg_cost=backout_avg_cost(last_price, sp.return_pct) or 0.0,
+            avg_cost=(
+                sp.avg_cost
+                if sp.avg_cost is not None
+                else backout_avg_cost(last_price, sp.return_pct)
+                if sp.return_pct is not None
+                else 0.0
+            ),  # 0.0 = unknown
             currency=sp.currency,
             pot=Pot(sp.pot),
             as_of=as_of,

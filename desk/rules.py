@@ -424,8 +424,11 @@ def rule_momentum_break(p: PositionView, res: ScoreResult | None, cfg: RuleConfi
 def rule_stale_position(p: PositionView, cfg: RuleConfig, today: dt.date) -> Flag | None:
     if p.price_as_of is None or p.instrument.kind in (InstrumentKind.cash, InstrumentKind.other):
         return None
-    manual = (p.price_source or "").endswith(("manual", "seed", "screenshot"))
-    limit = cfg.stale_days_manual if manual else cfg.stale_days
+    if p.instrument.stale_after_days:
+        limit = p.instrument.stale_after_days
+    else:
+        manual = (p.price_source or "").endswith(("manual", "seed", "screenshot"))
+        limit = cfg.stale_days_manual if manual else cfg.stale_days
     age = (today - p.price_as_of).days
     if age > limit:
         return Flag(
@@ -516,6 +519,18 @@ def run_rules(
                 flags.append(f)
         flags.extend(rule_thesis(session, p, view, today))
     flags.extend(rule_max_theme(view, cfg))
+    # a position that cannot be traded (SPV, external line) cannot carry a mandatory action: flag instead
+    untradable = {
+        p.instrument.id: p.instrument.ticker for p in view.positions if not p.instrument.tradable
+    }
+    for f in flags:
+        if f.severity == MANDATORY and f.instrument_id in untradable:
+            f.severity = REVIEW
+            f.detail["summary"] = (
+                f"cannot be executed ({untradable[f.instrument_id]} is not tradable): {f.summary}"
+            )
+            f.detail["downgraded_from"] = "mandatory"
+            f.action, f.size_pct = None, None
     for f in (rule_stale_inputs(session, cfg), rule_concentration(view, cfg, core_themes)):
         if f is not None:
             flags.append(f)

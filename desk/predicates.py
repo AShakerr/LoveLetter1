@@ -60,6 +60,14 @@ def _num(v: str | None) -> float | str | None:
         return v
 
 
+def _find_instrument(session: Session, ticker: str) -> Instrument | None:
+    """By display ticker first, then by the data-source symbol (close('ORA.PA') for ORA)."""
+    inst = session.exec(select(Instrument).where(Instrument.ticker == ticker)).first()
+    if inst is None:
+        inst = session.exec(select(Instrument).where(Instrument.source_symbol == ticker)).first()
+    return inst
+
+
 class Context:
     """Data access for one evaluation. Everything is looked up lazily from the session."""
 
@@ -81,7 +89,7 @@ class Context:
             if self.instrument is None:
                 raise PredicateError("no instrument in context; pass a ticker")
             return self.instrument
-        inst = self.session.exec(select(Instrument).where(Instrument.ticker == ticker)).first()
+        inst = _find_instrument(self.session, ticker)
         if inst is None:
             raise PredicateError(f"unknown instrument {ticker!r}")
         return inst
@@ -92,16 +100,25 @@ class Context:
             select(Price).where(Price.instrument_id == inst.id).order_by(Price.date.desc()).limit(1)
         ).first()
         if px is None:
-            if (
-                self.position is not None
-                and self.position.instrument_id == inst.id
-                and self.position.last_price
-            ):
+            # no market price: fall back to the last price the snapshot recorded, as the portfolio does
+            pos = (
+                self.position
+                if (self.position is not None and self.position.instrument_id == inst.id)
+                else None
+            )
+            if pos is None:
+                pos = self.session.exec(
+                    select(Position)
+                    .where(Position.instrument_id == inst.id, Position.closed_at.is_(None))
+                    .order_by(Position.id.desc())
+                    .limit(1)
+                ).first()
+            if pos is not None and pos.last_price:
                 return Price(
                     instrument_id=inst.id,
-                    date=self.position.as_of,
-                    close=self.position.last_price,
-                    source=self.position.source,
+                    date=pos.as_of,
+                    close=pos.last_price,
+                    source=pos.source,
                     fetched_at=dt.datetime.now(),
                 )
             raise PredicateError(f"no price for {inst.ticker}")
@@ -156,7 +173,7 @@ class Context:
         ).first()
         if obs is not None:
             return obs.value
-        inst = self.session.exec(select(Instrument).where(Instrument.ticker == series)).first()
+        inst = _find_instrument(self.session, series)
         if inst is not None:
             return self._latest_price(series).close
         raise PredicateError(f"no observation or price series {series!r}")
@@ -167,7 +184,7 @@ class Context:
     def change_pct(self, series: str, days: float) -> float:
         """% change over N trading days: the latest close versus the close N rows earlier."""
         n = int(days)
-        inst = self.session.exec(select(Instrument).where(Instrument.ticker == series)).first()
+        inst = _find_instrument(self.session, series)
         if inst is not None:
             rows = self.session.exec(
                 select(Price)
@@ -210,15 +227,20 @@ class Context:
         ).first()
         if obs is not None:
             return (self.today - obs.date).days
-        inst = self.session.exec(select(Instrument).where(Instrument.ticker == series)).first()
+        inst = _find_instrument(self.session, series)
         if inst is not None:
             return (self.today - self._latest_price(series).date).days
         raise PredicateError(f"no series, ticker or date {series!r}")
 
     def avg_cost(self, ticker: str | None = None) -> float:
-        if ticker is None or (self.instrument is not None and ticker == self.instrument.ticker):
+        if ticker is None or (
+            self.instrument is not None
+            and ticker in (self.instrument.ticker, self.instrument.source_symbol)
+        ):
             if self.position is None:
                 raise PredicateError("avg_cost needs a position in context")
+            if not self.position.avg_cost:
+                raise PredicateError("avg_cost unknown for this position")
             return self.position.avg_cost
         inst = self._instrument(ticker)
         pos = self.session.exec(
@@ -230,6 +252,8 @@ class Context:
         ).first()
         if pos is None:
             raise PredicateError(f"no open position in {ticker}")
+        if not pos.avg_cost:
+            raise PredicateError(f"avg_cost unknown for {ticker}")
         return pos.avg_cost
 
     def sentiment(self, ticker: str | None = None, days: float = 14) -> float:

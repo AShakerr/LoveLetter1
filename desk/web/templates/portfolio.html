@@ -73,7 +73,7 @@
         <td class="mono">{{ p.weight | pct }}</td>
         <td class="mono {% if p.pnl_pct is not none and p.pnl_pct < 0 %}red{% elif p.pnl_pct is not none %}green{% endif %}">{% if p.pnl_pct is not none %}{{ '%+.1f' % p.pnl_pct }}%{% else %}—{% endif %}</td>
         <td class="small">{{ p.theme }}</td>
-        <td class="muted small">{{ p.price_source }} · {{ p.price_as_of }}</td>
+        <td class="muted small">{{ p.price_source }} · <span class="{% if p.is_stale %}red{% endif %}" title="stale after {{ p.stale_after_days }} days">{{ p.price_as_of }}</span></td>
       </tr>
     {% endfor %}
     </tbody>

@@ -63,6 +63,20 @@ class PositionView:
     def theme(self) -> str:
         return self.instrument.theme or "unassigned"
 
+    @property
+    def stale_after_days(self) -> int:
+        if self.instrument.stale_after_days:
+            return self.instrument.stale_after_days
+        return 14 if (self.price_source or "").endswith(("manual", "seed", "screenshot")) else 7
+
+    @property
+    def age_days(self) -> int | None:
+        return None if self.price_as_of is None else (dt.date.today() - self.price_as_of).days
+
+    @property
+    def is_stale(self) -> bool:
+        return self.age_days is not None and self.age_days > self.stale_after_days
+
 
 @dataclass
 class LimitBar:

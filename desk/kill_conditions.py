@@ -73,13 +73,18 @@ def normalise(ticker: str, entry: Any) -> dict[str, Any]:
             continue
         kills.append(item)
     thesis = entry.get("thesis") or entry.get("kill_condition") or entry.get("text")
+    add_blocked_while = entry.get("add_blocked_while")
+    if entry.get("add_blocked") is True and not add_blocked_while:
+        add_blocked_while = "True"  # unconditional
     return {
         "ticker": ticker.upper(),
         "thesis": thesis.strip() if isinstance(thesis, str) else thesis,
         "kills": kills,
-        "add_blocked_while": entry.get("add_blocked_while"),
+        "add_blocked_while": add_blocked_while,
+        "add_note": entry.get("add_note"),
         "pre_condition": entry.get("pre_condition"),
         "theme": entry.get("theme"),
+        "tradable": entry.get("tradable"),
     }
 
 
@@ -141,6 +146,13 @@ def apply_to_positions(
                 ticker,
                 block["theme"],
                 inst.theme,
+            )
+        if block.get("tradable") is not None and bool(block["tradable"]) != inst.tradable:
+            log.warning(
+                "%s: kill file tradable=%s differs from universe tradable=%s",
+                ticker,
+                block["tradable"],
+                inst.tradable,
             )
         for row in session.exec(
             select(Position).where(Position.instrument_id == inst.id, Position.closed_at.is_(None))

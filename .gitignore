@@ -18,6 +18,8 @@ inbox/portfolio/*
 !inbox/portfolio/.gitkeep
 archive/reports/*
 !archive/reports/.gitkeep
+archive/portfolio/*
+!archive/portfolio/.gitkeep
 
 # secrets
 .env

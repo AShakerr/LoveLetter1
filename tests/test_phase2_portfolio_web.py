@@ -9,7 +9,7 @@ from desk.db import session_scope
 from desk.fixtures import load_fixtures
 from desk.houseviews import change_log, current_stance, latest_views
 from desk.ingest.revolut import confirm_batch
-from desk.models import HouseView, Regime, Report
+from desk.models import HouseView, Position, Regime, Report
 from desk.portfolio import build_portfolio
 from desk.seed import load_all_seeds
 from desk.universe import sync_instruments
@@ -29,7 +29,7 @@ def test_seed_loads_everything(settings, seeded):
     assert len(seeded["house_views"]) == 6 and all(
         r["status"] == "ok" for r in seeded["house_views"]
     )
-    assert seeded["positions"]["status"] == "pending" and seeded["positions"]["positions"] == 9
+    assert seeded["positions"]["status"] == "pending" and seeded["positions"]["positions"] == 11
     assert seeded["regime"]["status"] == "ok"
     with session_scope(settings) as s:
         assert len(s.exec(select(Report)).all()) == 6
@@ -53,6 +53,15 @@ def test_seed_loads_everything(settings, seeded):
         again = load_all_seeds(s, settings)
         assert all(r["status"] == "already loaded" for r in again["house_views"])
         assert again["positions"]["status"] == "already loaded"
+        # a position removed from the batch is re-added as pending when the seed file still lists it
+        from desk.models import Instrument as _I
+
+        ora = s.exec(select(_I).where(_I.ticker == "ORA")).one()
+        for row in s.exec(select(Position).where(Position.instrument_id == ora.id)).all():
+            s.delete(row)
+        s.commit()
+        ext = load_all_seeds(s, settings)["positions"]
+        assert ext["status"] == "extended" and ext["positions"] == 1
 
 
 def test_portfolio_valuation_and_limits(settings, seeded):
@@ -70,6 +79,16 @@ def test_portfolio_valuation_and_limits(settings, seeded):
         assert by_ticker["CASH_USD"].value_eur == pytest.approx(4240.79 / usd)
         assert abs(sum(p.weight for p in view.positions) - 1) < 1e-9
         bars = {b.label: b for b in view.limits}
+        assert by_ticker["WHOOP"].value_native == pytest.approx(25735.0)
+        assert (
+            by_ticker["ORA"].value_native == pytest.approx(342 * 15.97)
+            and by_ticker["ORA"].position.avg_cost == 14.01
+        )
+        assert by_ticker["WHOOP"].stale_after_days == 90 and not by_ticker["WHOOP"].is_stale
+        assert (
+            bars["Illiquid / private"].status == "breach"
+            and "WHOOP" in bars["Illiquid / private"].detail
+        )
         assert bars["Largest theme"].status == "breach" and bars["Largest theme"].detail == "gold"
         assert bars["Diversified core"].value == pytest.approx(
             sum(p.weight for p in view.positions if p.theme in ("us_broad", "em_broad"))

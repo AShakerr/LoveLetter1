@@ -102,6 +102,45 @@ positions:
     thesis: "Negligible; leave alone."
     kill: []
 
+  WHOOP:
+    theme: private_health_wearables
+    thesis: >
+      Pre-IPO exposure to WHOOP via an EquityZen SPV. USD 25,735 as stated 4 Sep 2026. There is no exit until a
+      liquidity event, so no rule can produce a SELL; the rules engine can only flag. Its real job in the book is to
+      be counted: with SPCX it puts illiquid private holdings at 35% against a 15% limit.
+    tradable: false
+    kill:
+      - human: "Down round, secondary marks below SPV entry, or a tender offer"
+        severity: review
+        note: "Mark-to-stated-value goes stale after 90 days; the UI must show the as-of date in red past that."
+      - human: "IPO or acquisition announced"
+        severity: review
+        note: "Re-underwrite as a public position; the lockup expiry becomes the first tradeable date."
+      - predicate: "theme_weight('private_health_wearables') + theme_weight('private_space') > 15"
+        severity: review
+        note: "Illiquid limit. Already true. Cannot be fixed by selling, so it is a constraint on everything else: no new illiquid positions, and every liquid add is measured against bringing this ratio down by denominator growth."
+    add_blocked: true
+
+  ORA:
+    theme: eu_telecom_income
+    thesis: >
+      Orange SA, 342 shares held outside Revolut. Defensive EUR income line: ~4.9% dividend yield, regulated
+      French telecom, low beta. Its role is EUR-denominated ballast and the only European equity in the book
+      before the eu_broad idea is executed. Safra has no single-name view; Communication Services is most preferred.
+    kill:
+      - predicate: "house_view('sector', 'Communication Services').stance == 'least_preferred'"
+        severity: mandatory
+      - predicate: "close('ORA.PA') < 0.85 * avg_cost('ORA')"
+        severity: review
+        note: "Income line gets a review, not a stop: a 15% drawdown on a 4.9% yielder is a rate move, not a thesis break. avg_cost unknown until Ahmed supplies it."
+      - human: "Dividend cut or suspended"
+        severity: mandatory
+        note: "The dividend is the thesis."
+      - human: "MasOrange / Spain or Africa disposal materially changes the group"
+        severity: review
+    add_blocked_while: "theme_weight('eu_broad') < 5"
+    add_note: "Do not add single-name European telecom before the diversified European position exists."
+
 # Not held yet, but the top-ranked candidates carry kill conditions from the moment a BUY decision is logged:
 
 candidates:

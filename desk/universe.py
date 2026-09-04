@@ -38,6 +38,7 @@ def sync_instruments(session: Session, items: list[dict] | None = None) -> int:
             region=it.get("region"),
             source_symbol=it.get("source_symbol"),
             isin=it.get("isin"),
+            stale_after_days=it.get("stale_after_days"),
         )
         if row is None:
             cc = it.get("composition_confirmed")

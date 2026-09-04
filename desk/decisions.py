@@ -148,7 +148,10 @@ def reasoning_markdown(
                     + (f" — {k['note']}" if k.get("note") else "")
                 )
         if kill.get("add_blocked_while"):
-            out.append(f"- ADD blocked while `{kill['add_blocked_while']}`")
+            out.append(
+                f"- ADD blocked while `{kill['add_blocked_while']}`"
+                + (f" — {kill['add_note']}" if kill.get("add_note") else "")
+            )
         if kill.get("pre_condition"):
             out.append(f"- Pre-condition: {kill['pre_condition']}")
         out.append("")
@@ -318,6 +321,7 @@ def run_pipeline(
         )
         my_flags = flags_for(flags, inst.id)
         if _exists(session, today, inst.id, action):
+            add_ids.add(inst.id)
             cash_avail -= size
             continue
         d = Decision(

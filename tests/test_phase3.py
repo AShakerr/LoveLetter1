@@ -80,6 +80,9 @@ def test_predicate_dsl(seeded):
             is True
         )
         assert evaluate("close('TSLA') < 0.82 * avg_cost('TSLA')", ctx) is False
+        assert evaluate("close('ORA.PA') > 0", ctx) is True  # source-symbol alias
+        assert evaluate("close('ORA.PA') < 0.85 * avg_cost('ORA')", ctx) is False
+        assert evaluate("days_since('ORA') >= 0", ctx) is True
         assert evaluate("observation('DGS30') > 5.50", ctx) is False
         with pytest.raises(PredicateError):
             evaluate("change_pct('SPCX', 60) < -25", ctx)  # no price history for the private line
@@ -312,7 +315,7 @@ def test_pipeline_decisions_idempotent_and_paper(seeded):
         res = run_pipeline(s, seeded, TODAY)
         assert res.created > 0
         actions = {(s.get(Instrument, d.instrument_id).ticker, d.action) for d in res.decisions}
-        held = {"TSLA", "VUSA", "X9I1", "4COP", "SPCX", "COMMODITIES_POT"}
+        held = {"TSLA", "VUSA", "X9I1", "4COP", "SPCX", "COMMODITIES_POT", "WHOOP", "ORA"}
         for t in held:
             assert any(tk == t for tk, _ in actions), t
         # unconfirmed pot -> HOLD with review flags, never TRIM
@@ -449,6 +452,12 @@ def test_seed_kill_conditions_loaded(seeded):
         assert "composition_confirmed" in pot.kill_json["pre_condition"]
         cop = s.exec(select(Position).where(Position.instrument_id == _inst(s, "4COP").id)).one()
         assert cop.kill_json["add_blocked_while"].startswith("theme_weight('gold')")
+        whoop = s.exec(select(Position).where(Position.instrument_id == _inst(s, "WHOOP").id)).one()
+        assert (
+            whoop.kill_json["add_blocked_while"] == "True" and whoop.kill_json["tradable"] is False
+        )
+        ora = s.exec(select(Position).where(Position.instrument_id == _inst(s, "ORA").id)).one()
+        assert ora.kill_json["add_note"].startswith("Do not add") and ora.avg_cost == 14.01
         cands = candidate_conditions(seeded)
         assert set(cands) == {"EU_BROAD_ETF", "INDUSTRIALS_ETF"}
         assert condition_for(_inst(s, "EXW1"), cands)["theme"] == "eu_broad"
@@ -469,3 +478,9 @@ def test_add_blocked_while(seeded):
         )  # gold 62% + copper > 35
         tsla = next(p for p in view.positions if p.instrument.ticker == "TSLA")
         assert add_blocked(s, tsla, view, TODAY) is None
+        whoop = next(p for p in view.positions if p.instrument.ticker == "WHOOP")
+        assert add_blocked(s, whoop, view, TODAY) == "True"
+        ora = next(p for p in view.positions if p.instrument.ticker == "ORA")
+        assert add_blocked(s, ora, view, TODAY).startswith(
+            "theme_weight('eu_broad')"
+        )  # no eu_broad position yet

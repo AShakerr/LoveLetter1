@@ -16,7 +16,7 @@ from sqlmodel import Session, select
 from desk.config import Settings, get_settings
 from desk.ingest.revolut import ScreenshotPosition, write_pending_positions
 from desk.ingest.safra import SafraExtraction, write_report
-from desk.models import Position, Regime, Report
+from desk.models import Instrument, Position, Regime, Report
 
 log = logging.getLogger(__name__)
 
@@ -53,15 +53,22 @@ def load_seed_house_views(session: Session, path: Path) -> list[dict[str, Any]]:
 
 
 def load_seed_positions(session: Session, path: Path) -> dict[str, Any]:
+    """Load the snapshot as a pending batch. If the batch already exists (the file grew), only the tickers
+    not yet in the batch are added, as pending rows the user confirms on the Portfolio page."""
     doc = json.loads(path.read_text(encoding="utf-8"))
     meta = doc.get("_meta", {})
     as_of = dt.date.fromisoformat(meta.get("as_of") or dt.date.today().isoformat())
     batch = f"seed:{path.stem}"
-    if session.exec(select(Position).where(Position.batch == batch)).first() is not None:
-        return {"batch": batch, "status": "already loaded"}
     ids = meta.get("identifiers", {})
+    existing = session.exec(select(Position).where(Position.batch == batch)).all()
+    have = set()
+    if existing:
+        inst_by_id = {i.id: i.ticker for i in session.exec(select(Instrument)).all()}
+        have = {inst_by_id.get(r.instrument_id) for r in existing}
     positions = []
     for p in doc["positions"]:
+        if p["ticker"] in have:
+            continue
         ident = ids.get(p["ticker"], {})
         positions.append(
             ScreenshotPosition(
@@ -69,6 +76,7 @@ def load_seed_positions(session: Session, path: Path) -> dict[str, Any]:
                 name=ident.get("name"),
                 pot=p.get("pot", "brokerage"),
                 quantity=p.get("quantity"),
+                avg_cost=p.get("avg_cost"),
                 last_price=p.get("last_price")
                 if p.get("last_price") is not None
                 else p.get("avg_cost"),
@@ -78,6 +86,8 @@ def load_seed_positions(session: Session, path: Path) -> dict[str, Any]:
                 note=p.get("note"),
             )
         )
+    if not positions:
+        return {"batch": batch, "status": "already loaded"}
     rows = write_pending_positions(
         session,
         positions,
@@ -86,7 +96,12 @@ def load_seed_positions(session: Session, path: Path) -> dict[str, Any]:
         as_of=as_of,
         confirmed=bool(meta.get("confirmed_by_user", False)),
     )
-    return {"batch": batch, "status": "pending", "positions": len(rows), "as_of": as_of.isoformat()}
+    return {
+        "batch": batch,
+        "status": "extended" if existing else "pending",
+        "positions": len(rows),
+        "as_of": as_of.isoformat(),
+    }
 
 
 def load_seed_regime(session: Session, path: Path) -> dict[str, Any]:
