@@ -123,9 +123,18 @@ def aaii_backfill_cmd(path: str, verbose: bool = False) -> None:
     from desk.sources.aaii import backfill
 
     _log(verbose)
+    p = Path(path).expanduser()
+    if not p.is_file():
+        typer.echo(
+            f"{p} does not exist. Download the AAII historical spreadsheet (member login) from "
+            "https://www.aaii.com/files/surveys/sentiment.xls or export a CSV with Date, Bullish, "
+            "Neutral, Bearish columns, then pass that path.",
+            err=True,
+        )
+        raise typer.Exit(2)
     settings = get_settings()
     init_db(settings)
-    obs = backfill(Path(path))
+    obs = backfill(p)
     with session_scope(settings) as session:
         counts = persist_observations(session, obs)
     typer.echo(f"AAII backfill: {len(obs)} weekly readings parsed; {dict(counts)}")
