@@ -59,6 +59,7 @@ instruments:
   - {ticker: "^GSPC", name: S&P 500, kind: index, currency: USD, tradable: false, region: USA, theme: us_broad}
   - {ticker: "^NDX", name: Nasdaq 100, kind: index, currency: USD, tradable: false, region: USA, theme: ai_capex}
   - {ticker: "^GDAXI", name: DAX, kind: index, currency: EUR, tradable: false, region: Germany, theme: eu_broad}
+  - {ticker: "^STOXX", name: STOXX Europe 600, kind: index, currency: EUR, tradable: false, region: Euro area, theme: eu_broad}
   - {ticker: "^STOXX50E", name: Euro Stoxx 50, kind: index, currency: EUR, tradable: false, region: Euro area, theme: eu_broad}
   - {ticker: "^VIX", name: CBOE VIX, kind: index, currency: USD, tradable: false, region: USA}
   - {ticker: "^VIX3M", name: CBOE VIX 3-month, kind: index, currency: USD, tradable: false, region: USA}

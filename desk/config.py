@@ -48,6 +48,18 @@ class Settings(BaseSettings):
     fundamentals_weekday: int = Field(default=6, alias="DESK_FUNDAMENTALS_WEEKDAY")  # 6 = Sunday
     fundamentals_hour: int = Field(default=6, alias="DESK_FUNDAMENTALS_HOUR")
     screener_refresh_day: int = Field(default=1, alias="DESK_SCREENER_REFRESH_DAY")  # day of month
+    # phase 4: weekly digest and optional Claude-written reasoning
+    digest_weekday: int = Field(default=0, alias="DESK_DIGEST_WEEKDAY")  # 0 = Monday
+    digest_hour: int = Field(default=7, alias="DESK_DIGEST_HOUR")
+    digest_minute: int = Field(default=30, alias="DESK_DIGEST_MINUTE")
+    digest_to: str | None = Field(default=None, alias="DESK_DIGEST_TO")
+    digest_from: str | None = Field(default=None, alias="DESK_DIGEST_FROM")
+    smtp_host: str | None = Field(default=None, alias="DESK_SMTP_HOST")
+    smtp_port: int = Field(default=587, alias="DESK_SMTP_PORT")
+    smtp_user: str | None = Field(default=None, alias="DESK_SMTP_USER")
+    smtp_pass: str | None = Field(default=None, alias="DESK_SMTP_PASS")
+    smtp_starttls: bool = Field(default=True, alias="DESK_SMTP_STARTTLS")
+    llm_reasoning: bool = Field(default=False, alias="DESK_LLM_REASONING")
 
     @property
     def db_path(self) -> Path:

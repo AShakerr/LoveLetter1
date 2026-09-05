@@ -218,6 +218,9 @@ class Decision(SQLModel, table=True):
     score_id: int | None = Field(default=None, foreign_key="scores.id")
     rules_json: dict | None = Field(default=None, sa_column=Column(JSON))
     reasoning_md: str
+    narrative_md: str | None = (
+        None  # optional Claude-written paragraph (phase 4); the template text above is canonical
+    )
     created_at: dt.datetime
     user_status: str = "pending"  # pending | approved | executed | skipped | overridden | deferred
     user_note: str | None = None

@@ -168,6 +168,33 @@ def rescore() -> None:
             )
 
 
+@app.command("track-record")
+def track_record_cmd() -> None:
+    """Print hit rates and the promotion checklist."""
+    from desk.db import init_db, session_scope
+    from desk.trackrecord import decision_outcomes, hit_rate, promotion_checklist
+
+    settings = get_settings()
+    init_db(settings)
+    with session_scope(settings) as s:
+        hr = hit_rate(decision_outcomes(s, settings=settings))
+        typer.echo(json.dumps(hr, indent=1, default=str))
+        for c in promotion_checklist(s, settings=settings):
+            typer.echo(f"{'PASS' if c.passed else 'FAIL'}  {c.name}: {c.value}")
+
+
+@app.command()
+def digest(
+    send: bool = typer.Option(
+        True, help="Send by SMTP when configured, else write to data/digests/"
+    ),
+) -> None:
+    """Build (and send) the weekly digest now."""
+    from desk.digest import run_digest
+
+    typer.echo(json.dumps(run_digest(get_settings(), send=send), indent=1, default=str))
+
+
 @app.command()
 def backup() -> None:
     """Write a consistent SQLite backup to data/backups/."""

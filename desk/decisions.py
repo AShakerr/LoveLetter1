@@ -25,6 +25,7 @@ from desk.kill_conditions import (
     kill_block,
 )
 from desk.models import Decision, Instrument, InstrumentKind, Position, Pot, Regime
+from desk.narrative import add_narratives
 from desk.portfolio import Limits, PortfolioView, build_portfolio
 from desk.regime import classify
 from desk.rules import Flag, RuleConfig, add_blocked, flags_for, global_flags, run_rules
@@ -466,6 +467,10 @@ def run_pipeline(
                 out.notes.append(f"execution: {d.action} {d.instrument_id} failed: {exc}")
     out.orders_submitted = submitted
     settle_paper(session, settings)
+    try:
+        add_narratives(session, new, settings)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("narratives skipped: %s", exc)
     return out
 
 

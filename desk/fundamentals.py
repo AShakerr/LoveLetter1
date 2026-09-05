@@ -85,6 +85,38 @@ def fetch_alphavantage_overview(symbol: str, api_key: str, budget: CallBudget) -
     return out
 
 
+def fetch_yfinance_earnings(symbol: str, limit: int = 8) -> list[dict[str, Any]]:
+    """[{date, eps_estimate, reported_eps}] from yfinance Ticker.earnings_dates (past and upcoming)."""
+    import yfinance as yf
+
+    df = yf.Ticker(symbol).get_earnings_dates(limit=limit)
+    out: list[dict[str, Any]] = []
+    if df is None or len(df) == 0:
+        return out
+    for idx, row in df.iterrows():
+        d = idx.date() if hasattr(idx, "date") else dt.date.fromisoformat(str(idx)[:10])
+        est = row.get("EPS Estimate") if hasattr(row, "get") else None
+        rep = row.get("Reported EPS") if hasattr(row, "get") else None
+        out.append({"date": d.isoformat(), "eps_estimate": _num(est), "reported_eps": _num(rep)})
+    return out
+
+
+def store_earnings(session: Session, instrument: Instrument, rows: list[dict[str, Any]]) -> int:
+    from desk.events import add_earnings_event
+
+    n = 0
+    for r in rows:
+        add_earnings_event(
+            session,
+            instrument,
+            dt.date.fromisoformat(r["date"]),
+            r.get("eps_estimate"),
+            r.get("reported_eps"),
+        )
+        n += 1
+    return n
+
+
 def store_fundamentals(
     session: Session, instrument: Instrument, on: dt.date, values: dict[str, Any], source: str
 ) -> int:
@@ -196,6 +228,8 @@ def run_weekly(
     fetch: Callable[[str], dict[str, Any]] = fetch_yfinance_info,
     av_fallback: bool = True,
     on: dt.date | None = None,
+    fetch_earnings: Callable[[str], list[dict[str, Any]]] | None = fetch_yfinance_earnings,
+    earnings_for: list[Instrument] | None = None,
 ) -> dict[str, Any]:
     """Refresh fundamentals for stocks and ETFs. Slow on purpose: weekly, one symbol at a time."""
     settings = settings or get_settings()
@@ -240,4 +274,27 @@ def run_weekly(
             continue
         store_fundamentals(session, inst, on, values, source)
         ok += 1
-    return {"date": on.isoformat(), "ok": ok, "alphavantage_fallback": fallback, "failed": failed}
+    # earnings dates (7b): held and watchlist stocks, past and upcoming, into the events calendar
+    earnings = 0
+    if fetch_earnings is not None:
+        targets = (
+            earnings_for
+            if earnings_for is not None
+            else [
+                i for i in instruments if i.kind == InstrumentKind.stock and not i.screener_member
+            ]
+        )
+        for inst in targets:
+            try:
+                earnings += store_earnings(
+                    session, inst, fetch_earnings(inst.source_symbol or inst.ticker)
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.warning("earnings %s: %s", inst.ticker, exc)
+    return {
+        "date": on.isoformat(),
+        "ok": ok,
+        "alphavantage_fallback": fallback,
+        "failed": failed,
+        "earnings_events": earnings,
+    }

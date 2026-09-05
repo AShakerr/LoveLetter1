@@ -11,7 +11,7 @@
 </section>
 
 <section class="cols">
-  <div class="reasoning">{{ d.reasoning_md | markdown | safe }}</div>
+  <div class="reasoning">{% if d.narrative_md %}<blockquote class="narrative">{{ d.narrative_md }}<br><span class="muted small">Claude-written summary of the template argument below; the template is canonical.</span></blockquote>{% endif %}{{ d.reasoning_md | markdown | safe }}</div>
   <div>
     <h2>Your response</h2>
     {% if d.user_status in ('pending', 'deferred') %}

@@ -16,7 +16,7 @@
       <a href="/house-views" class="{% if active == 'house' %}active{% endif %}">House views</a>
       <a href="/decisions" class="{% if active == 'decisions' %}active{% endif %}">Decisions</a>
       <a href="/screener" class="{% if active == 'screener' %}active{% endif %}">Screener</a>
-      <a class="disabled" title="phase 4">Track record</a>
+      <a href="/track-record" class="{% if active == 'track' %}active{% endif %}">Track record</a>
     </nav>
     <div class="clock muted">{{ now.strftime('%a %d %b %Y %H:%M') }} {{ tz }}</div>
   </header>

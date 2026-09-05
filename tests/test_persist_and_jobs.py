@@ -71,7 +71,12 @@ def test_run_daily_records_fetch_runs(settings):
 
 def test_load_fixtures_tags_source(settings):
     summary = load_fixtures(settings)
-    assert all(s["status"] == "ok" for s in summary), summary
+    assert all(s["status"] in ("ok", "missing") for s in summary), summary
+    assert all(
+        s["status"] == "ok"
+        for s in summary
+        if s["source"] not in ("constituents", "screener_prices")
+    ), summary
     with session_scope(settings) as s:
         assert {p.source for p in s.exec(select(Price)).all()} == {"fixture:yfinance"}
         assert s.exec(select(ObsRow).where(ObsRow.series == "DGS10")).first() is not None

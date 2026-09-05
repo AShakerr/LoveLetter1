@@ -10,7 +10,7 @@ from typing import Any
 from sqlmodel import Session, select
 
 from desk.events import last_with_actual, surprise_direction, upcoming
-from desk.models import Instrument, InstrumentKind, Observation
+from desk.models import Instrument, InstrumentKind, NewsSentiment, Observation
 
 # series -> sign: +1 means a high value = crowd long; -1 means a high value = crowd short (put/call)
 COT = {
@@ -101,8 +101,70 @@ def crowd_long_percentile(
     return sum(parts) / len(parts), inputs
 
 
-def score_crowd(percentile: float | None, surprise: int) -> tuple[float | None, str]:
-    """Contrarian at extremes, confirming in the middle. Our decisions are longs, so 'with the crowd' = crowd long."""
+SENTIMENT_THRESHOLD = 0.15
+SECTOR_TOPIC = {
+    "Energy": ["energy_transportation", "oil price"],
+    "Banks": ["financial_markets"],
+    "Communication Services": ["financial_markets"],
+    "Utilities": ["economy_macro"],
+}
+DEFAULT_TOPICS = ["financial_markets", "economy_macro"]
+
+
+def sentiment_adjust(
+    session: Session, inst: Instrument, today: dt.date, days: int = 14
+) -> tuple[int, dict[str, Any]]:
+    """+1 above +0.15, -1 below -0.15, on the instrument's 14-day Alpha Vantage sentiment; GDELT/topic tone as the
+    sector-level fallback (GDELT tone is on a roughly -10..+10 scale and is divided by 10)."""
+    since = today - dt.timedelta(days=days)
+    own = session.exec(
+        select(NewsSentiment).where(
+            NewsSentiment.instrument_id == inst.id, NewsSentiment.date >= since
+        )
+    ).all()
+    if own:
+        mean = sum(r.score for r in own) / len(own)
+        info: dict[str, Any] = {
+            "level": "ticker",
+            "mean": round(mean, 4),
+            "n": len(own),
+            "source": own[-1].source,
+        }
+    else:
+        topics = SECTOR_TOPIC.get(inst.sector or "", []) + DEFAULT_TOPICS
+        rows = []
+        used = None
+        for topic in topics:
+            rows = session.exec(
+                select(NewsSentiment).where(
+                    NewsSentiment.topic == topic, NewsSentiment.date >= since
+                )
+            ).all()
+            if rows:
+                used = topic
+                break
+        if not rows:
+            return 0, {"level": "none", "note": "no sentiment in the window", "adjust": 0}
+        vals = [r.score / 10 if r.source.startswith("gdelt") else r.score for r in rows]
+        mean = sum(vals) / len(vals)
+        info = {
+            "level": "sector",
+            "topic": used,
+            "mean": round(mean, 4),
+            "n": len(rows),
+            "source": rows[-1].source,
+            "note": "sector-level sentiment only",
+        }
+    adj = 1 if mean > SENTIMENT_THRESHOLD else -1 if mean < -SENTIMENT_THRESHOLD else 0
+    info["adjust"] = adj
+    return adj, info
+
+
+def score_crowd(
+    percentile: float | None, surprise: int, sentiment: int = 0
+) -> tuple[float | None, str]:
+    """Contrarian at extremes, confirming in the middle. Our decisions are longs, so 'with the crowd' = crowd long.
+    Surprise and sentiment only count in the 30-70 band; the result is clamped to 1-5."""
     if percentile is None:
         return None, "no positioning data; neutral used"
     p = percentile
@@ -111,10 +173,11 @@ def score_crowd(percentile: float | None, surprise: int) -> tuple[float | None, 
     if p < 10:
         return 4.0, "crowded short (P<10): against the crowd: 4"
     if 30 <= p <= 70:
-        base = 3.0 + surprise
-        return float(
-            max(0, min(5, base))
-        ), f"no positioning information (P {p:.0f}): 3 {surprise:+d} surprise"
+        base = 3.0 + surprise + sentiment
+        return (
+            float(max(1, min(5, base))),
+            f"no positioning information (P {p:.0f}): 3 {surprise:+d} surprise {sentiment:+d} sentiment",
+        )
     if p > 70:
         return 2.0, f"mildly stretched long (P {p:.0f}): 2"
     return 3.0, f"mildly stretched short (P {p:.0f}): against: 3"
@@ -132,7 +195,10 @@ def crowd_factor(session: Session, inst: Instrument, today: dt.date) -> CrowdRes
             "actual": ev.actual,
             "direction": surprise,
         }
-    value, note = score_crowd(p, surprise if p is not None and 30 <= p <= 70 else 0)
+    sent, sinfo = sentiment_adjust(session, inst, today)
+    inputs["sentiment"] = sinfo
+    in_band = p is not None and 30 <= p <= 70
+    value, note = score_crowd(p, surprise if in_band else 0, sent if in_band else 0)
     inputs["disclaimer"] = DISCLAIMER
     return CrowdResult(value, p, inputs, note)
 

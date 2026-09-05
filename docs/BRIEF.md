@@ -151,7 +151,7 @@ Sentiment level says how people feel. What moves prices is the gap between outco
 For an instrument, take the positioning signal most relevant to its theme (COT for commodities and FX, put/call and AAII for equities). Express it as a percentile P of its 3-year range.
 
 - P above 90 or below 10: crowded. Score **1** for a position in the crowd's direction, **4** against it. The trade everyone already has is the one with nobody left to buy.
-- P between 30 and 70: no information from positioning. Score **3**, then adjust ±1 for surprise: last relevant macro or earnings surprise in the instrument's favour adds 1, against subtracts 1.
+- P between 30 and 70: no information from positioning. Score **3**, then adjust: +1 if the last relevant macro or earnings surprise was in the instrument's favour, −1 if against; and +1 if 14-day news sentiment for the instrument (Alpha Vantage, or GDELT sector tone as fallback) is above +0.15, −1 if below −0.15. Clamp to 1–5. This is where news sentiment lives in the score: it only counts when positioning is not already extreme, because at extremes the crowd's feelings are the problem, not the signal.
 - P between 10 and 30 or 70 and 90: mildly stretched. Score **2** with the crowd, **3** against.
 - Consensus gap: if the Safra target for the instrument's index is within 2% of consensus, cap the Safra alignment factor's contribution at 4/5 instead of 5/5 and note "house view is consensus" in the reasoning. If Safra is more than 5% away from consensus in the direction of the trade, no change (the view carries information whether or not it turns out right).
 

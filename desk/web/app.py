@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo
@@ -47,6 +47,14 @@ from desk.scheduler import build_scheduler
 from desk.screener import page_rows, propose_buy, screener_instruments
 from desk.seed import load_all_seeds
 from desk.tape import MORE, TAPE, latest_runs, load_tape
+from desk.trackrecord import (
+    attribution,
+    decision_outcomes,
+    hit_rate,
+    promotion_checklist,
+    screener_track,
+    seeded_ideas,
+)
 from desk.universe import sync_instruments
 from desk.web.auth import BasicAuthMiddleware
 
@@ -199,6 +207,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return RedirectResponse(
             "/decisions?flash=" + quote_plus("Kill switch released"), status_code=303
         )
+
+    @app.get("/track-record", response_class=HTMLResponse)
+    def track_record(request: Request, flash: str | None = None):
+        with session_scope(settings) as session:
+            today = datetime.now(ZoneInfo(settings.tz)).date()
+            outcomes = decision_outcomes(session, today, settings, windows=(30, 90))
+            checklist = promotion_checklist(session, today, settings)
+            first = min((o.decision.date for o in outcomes), default=None)
+            return templates.TemplateResponse(
+                request,
+                "track_record.html",
+                _base_ctx(
+                    request,
+                    outcomes=outcomes,
+                    hits=hit_rate(outcomes),
+                    by_rule=attribution(outcomes, "rule"),
+                    by_factor=attribution(outcomes, "factor"),
+                    checklist=checklist,
+                    all_pass=all(c.passed for c in checklist),
+                    screener=screener_track(session, today),
+                    ideas=seeded_ideas(session, today),
+                    first_maturity=(first + timedelta(days=30)) if first else None,
+                    flash=flash,
+                    active="track",
+                ),
+            )
 
     @app.get("/screener", response_class=HTMLResponse)
     def screener(request: Request, flash: str | None = None):

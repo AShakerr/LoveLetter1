@@ -143,6 +143,12 @@ def test_quality_gate():
 def test_crowd_bands():
     assert score_crowd(95, 0)[0] == 1 and score_crowd(5, 0)[0] == 4
     assert score_crowd(50, 0)[0] == 3 and score_crowd(50, 1)[0] == 4 and score_crowd(50, -1)[0] == 2
+    assert (
+        score_crowd(50, 1, 1)[0] == 5
+        and score_crowd(50, -1, -1)[0] == 1
+        and score_crowd(50, 1, -1)[0] == 3
+    )
+    assert score_crowd(95, 1, 1)[0] == 1  # extremes ignore surprise and sentiment
     assert score_crowd(80, 0)[0] == 2 and score_crowd(20, 0)[0] == 3
     assert score_crowd(None, 0)[0] is None
 

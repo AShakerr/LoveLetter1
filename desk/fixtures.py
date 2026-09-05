@@ -68,6 +68,12 @@ def load_fixtures(settings: Settings, fixtures_dir: Path | None = None) -> list[
             record_run(session, outcome, rows)
             summary.append({"source": fetcher.name, "status": "ok", "rows": rows})
 
+        summary.append(
+            load_fixture_constituents(session, settings, fixtures_dir / "constituents.json")
+        )
+        summary.append(
+            load_fixture_screener_prices(session, settings, fixtures_dir / "screener_prices.json")
+        )
         summary.append(load_fixture_fundamentals(session, fixtures_dir / "fundamentals.json"))
         from desk.events import load_events_config
 
@@ -97,3 +103,36 @@ def load_fixture_fundamentals(session, path: Path) -> dict:
             continue
         n += store_fundamentals(session, inst, on, values, "fixture:yfinance")
     return {"source": "fundamentals", "status": "ok", "rows": n}
+
+
+def load_fixture_constituents(session, settings, path: Path) -> dict:
+    """tests/fixtures/constituents.json: {"sp500": [rows], "stoxx600": [rows]} as fetch_wikipedia_constituents returns."""
+    from desk.screener import refresh_constituents
+
+    if not path.exists():
+        return {"source": "constituents", "status": "missing", "rows": 0}
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    res = refresh_constituents(session, settings, fetch=lambda src: doc.get(src, []))
+    return {
+        "source": "constituents",
+        "status": "ok",
+        "rows": sum(v.get("members", 0) for v in res.values()),
+    }
+
+
+def load_fixture_screener_prices(session, settings, path: Path) -> dict:
+    """Same shape as yfinance.json, for the screener universe."""
+    from desk.sources.yfinance_source import YFinanceFetcher
+
+    if not path.exists():
+        return {"source": "screener_prices", "status": "missing", "rows": 0}
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    obs = YFinanceFetcher({}, settings=settings).parse(raw)
+    for o in obs:
+        o.source = f"fixture:{o.source}"
+    counts = persist_observations(session, obs)
+    return {
+        "source": "screener_prices",
+        "status": "ok",
+        "rows": sum(v for k, v in counts.items() if not k.startswith("skipped")),
+    }

@@ -10,7 +10,7 @@ It does not trade and it is not investment advice.
 | 1 | Skeleton, all fetchers with recorded fixtures, daily scheduler, tape dashboard | **done** |
 | 2 | Safra PDF extraction, seed house views, Revolut screenshot ingestion, portfolio view | **done** |
 | 3 | Regime, conviction score, rules engine, decisions, paper execution (8b) | **done** |
-| 4 | 7b crowd factor, 7c valuation, weekly fundamentals, 8c screener | **done up to the screener page**; self-scoring, promotion checklist and digest next |
+| 4 | 7b crowd, 7c valuation, weekly fundamentals, 8c screener, self-scoring, promotion checklist, weekly digest | **done** (screener still needs one real-data render on the user's machine) |
 
 ## Run locally
 
@@ -25,6 +25,8 @@ uv run desk decide              # regime -> scores -> rules -> decisions -> pape
 uv run desk fundamentals        # weekly fundamentals refresh (yfinance Ticker.info; Alpha Vantage OVERVIEW fallback)
 uv run desk screener --refresh  # constituents from Wikipedia + Safra focus list, then rank/gate the universe
 uv run desk rescore             # recompute today's scores with the current weights
+uv run desk track-record        # hit rates and the promotion checklist
+uv run desk digest              # weekly digest now (SMTP when configured, else data/digests/)
 uv run desk serve               # http://localhost:8000
 uv run pytest                   # network is disabled for every test
 ```
@@ -150,6 +152,25 @@ page updates the confirmed positions; the decision text is never edited.
   `screener.tradable_default`), then every day prices the universe, scores it, applies the quality and
   value-trap gates and writes the top and bottom 15 to `screener`. The Screener page expands each row to its
   breakdown; Propose BUY needs score ≥ 75, portfolio fit ≥ 3, gates passed and 3 consecutive days in the top 15.
+
+## Track record, promotion, digest (phase 4, second half)
+
+- `desk/trackrecord.py` scores every decision at 30 and 90 days against its alternative (bought vs the 50/50
+  VUSA / EURO STOXX 50 blend, sold vs kept, held vs cash, avoided vs bought), net of paper costs (realised fill
+  slippage and fees, else the costs.yaml spread), with hit rate and attribution by rule and by dominant factor.
+  The 8b promotion checklist is computed live with a pass/fail per criterion; the screener's daily top 15 is
+  scored equal-weight at 30/60/90 days against the S&P 500 / STOXX 600 equal-weight; the seeded August Safra
+  ideas are shown against prices since each report. Page: /track-record.
+- `desk/digest.py`: Monday 07:30 digest (decisions of the week, pending, paper vs actual, track record,
+  checklist, screener top 5). SMTP via DESK_SMTP_* and DESK_DIGEST_TO; otherwise written to data/digests/.
+- `desk/narrative.py`: optional Claude-written paragraph per decision (DESK_LLM_REASONING=1); the template text
+  stays canonical.
+- The weekly fundamentals job also records earnings dates (past and upcoming) for held and watchlist stocks
+  into the events calendar, which feeds the crowd factor's surprise term and the deferral rule.
+- Crowd (7b): in the 30-70 positioning band, 14-day news sentiment adds ±1 (ticker-level Alpha Vantage, else
+  GDELT/topic tone divided by 10, flagged sector-level); ±0.15 thresholds; clamped to 1-5.
+- `scripts/record_fixtures.py --screener` records constituents, screener prices and fundamentals as well, so
+  `desk load-fixtures` can reproduce the Screener page offline from real payloads.
 
 ## Layout
 
