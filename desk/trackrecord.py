@@ -17,6 +17,7 @@ from desk.models import (
     Decision,
     FillRow,
     Instrument,
+    InstrumentKind,
     OrderRow,
     Price,
     RuleFired,
@@ -481,6 +482,8 @@ def seeded_ideas(session: Session, today: dt.date | None = None) -> list[dict[st
             if a is None or b is None or not a.close:
                 continue
             seen.add(key)
+            inst = session.get(Instrument, iid)
+            is_proxy = inst.kind not in (InstrumentKind.index, InstrumentKind.commodity)
             out.append(
                 {
                     "kind": v.scope,
@@ -491,9 +494,10 @@ def seeded_ideas(session: Session, today: dt.date | None = None) -> list[dict[st
                     "latest_date": b.date,
                     "return": b.close / a.close - 1,
                     "report_date": row.report.date,
-                    "progress": (b.close - a.close) / (target - a.close)
-                    if target != a.close
-                    else None,
+                    "progress": None
+                    if is_proxy or target == a.close
+                    else (b.close - a.close) / (target - a.close),
+                    "proxy": inst.ticker if is_proxy else None,
                     "hit": None,
                 }
             )
