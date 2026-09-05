@@ -4,7 +4,7 @@ This is the spec for `desk`. Sections are numbered as in the original brief; the
 
 ## 1. What this is
 
-A daily-refreshed dashboard that decides what to buy, hold, trim and sell across a small Revolut portfolio, driven by three inputs: live market data, daily news sentiment, and Bank J. Safra Sarasin research PDFs the user receives weekly or biweekly. It does not trade. It produces a ranked decision list with reasoning, logs every decision with its inputs, and scores itself over time so the user can see whether the system's calls are any good.
+A daily-refreshed dashboard that decides what to buy, hold, trim and sell across a small Revolut portfolio, driven by three inputs: live market data, daily news sentiment, and Bank J. Safra Sarasin research PDFs the user receives weekly or biweekly. It starts as a decision journal with a paper-trading shadow book, and becomes a trading bot only once its own track record passes the promotion criteria in section 8b. It produces a ranked decision list with reasoning, logs every decision with its inputs, fills them on paper with realistic costs, and scores itself over time so the user can see whether the system's calls are any good before real money follows them.
 
 The design principle: **a decision is an argument with its weights shown.** The user should be able to open any decision and see exactly which inputs produced it, which rule fired, and what would reverse it.
 
@@ -119,6 +119,64 @@ The `label` is a human sentence assembled from these, e.g. "Energy-shock inflati
 
 Total = Σ(factor/5 × weight), range 0–100. Bands: 75+ act, 60–74 candidate, 45–59 watch, <45 avoid. Store every factor and its inputs JSON so the UI can render the breakdown.
 
+## 7b. Crowd factor (positioning and surprise)
+
+Sentiment level says how people feel. What moves prices is the gap between outcome and expectation, and how much of the expected outcome is already bought. This factor measures those two things and nothing else.
+
+**Weights change.** Momentum drops from 15 to 10 (pure price trend: 3-month return percentile within the universe, nothing else). Seasonality drops from 10 to 5. The freed 10 points become **Crowd**. Total stays 100. Updated table:
+
+| Factor | Weight |
+|---|---|
+| Safra alignment | 25 |
+| Regime fit | 20 |
+| Portfolio fit | 15 |
+| Valuation | 15 (redefined in 7c) |
+| Momentum | 10 |
+| Crowd | 10 |
+| Seasonality | 5 |
+
+**Inputs, all free:**
+
+| Signal | Source | Cadence | What it measures |
+|---|---|---|---|
+| CFTC Commitments of Traders, net speculative position as percentile of 3-year range | cftc.gov CSV, Legacy report, futures-only | Weekly (Fri) | Crowding in gold, crude, copper, S&P e-mini, EUR, 10y notes |
+| Put/call ratio (CBOE total) and VIX term structure (VIX vs VIX3M) | CBOE daily CSV, yfinance ^VIX ^VIX3M | Daily | Hedging demand; backwardation = stress |
+| AAII bull-bear spread | aaii.com weekly survey | Weekly (Thu) | Retail stated positioning |
+| Macro surprise | Store consensus before and actual after for: payrolls, CPI, core CPI, PCE, ISM, EZ HICP, FOMC and ECB decisions vs market-implied odds the day before | Per event | Whether the outcome beat what was priced |
+| Earnings surprise | Beat rate vs 10-year average, and price reaction on the day vs the beat (a beat that sells off is a crowded name) | Per season | Whether good news is already owned |
+| Consensus gap on the house view | Safra index targets vs sell-side consensus (yfinance analyst targets aggregated for index constituents, or the median from a fixed set of published strategist targets in `manual_observations.yaml`) | Monthly | Whether the bank is the crowd |
+
+**Scoring, 0 to 5, contrarian at extremes and confirming in the middle:**
+
+For an instrument, take the positioning signal most relevant to its theme (COT for commodities and FX, put/call and AAII for equities). Express it as a percentile P of its 3-year range.
+
+- P above 90 or below 10: crowded. Score **1** for a position in the crowd's direction, **4** against it. The trade everyone already has is the one with nobody left to buy.
+- P between 30 and 70: no information from positioning. Score **3**, then adjust ±1 for surprise: last relevant macro or earnings surprise in the instrument's favour adds 1, against subtracts 1.
+- P between 10 and 30 or 70 and 90: mildly stretched. Score **2** with the crowd, **3** against.
+- Consensus gap: if the Safra target for the instrument's index is within 2% of consensus, cap the Safra alignment factor's contribution at 4/5 instead of 5/5 and note "house view is consensus" in the reasoning. If Safra is more than 5% away from consensus in the direction of the trade, no change (the view carries information whether or not it turns out right).
+
+**Deferral rule (rules engine):** a BUY or ADD decision whose instrument has a scheduled event (FOMC, ECB, CPI, payrolls, its own earnings) within the next 2 trading days, AND whose positioning percentile is above 80 or below 20, is created with status `deferred` and a reason, and re-evaluated the day after the event. Mandatory exits are never deferred.
+
+**What this does not claim.** None of this predicts what the crowd will do. It measures what the crowd has already done and what it already expects, which is the only observable part. Say that in the reasoning template.
+
+## 7c. Valuation factor, redefined (P/E, forward P/E, PEG)
+
+The 15-point Valuation factor becomes explicit and instrument-aware.
+
+**Data.** yfinance `Ticker.info` gives `trailingPE`, `forwardPE`, `pegRatio`, `priceToBook`, `enterpriseToEbitda`, `freeCashflow`, `totalDebt`, `ebitda`, `revenueGrowth`, `earningsGrowth`, `targetMeanPrice`, `numberOfAnalystOpinions`, `recommendationMean`. It is free, occasionally stale or missing, and PEG in particular depends on analyst growth estimates that are frequently wrong. Refresh fundamentals **weekly** (Sunday job) for the whole universe, not daily; they do not change daily and the calls are slow. Alpha Vantage `OVERVIEW` is the fallback for a name yfinance returns nothing for, within the 25-call daily budget. Store every field in a new `fundamentals(instrument_id, date, field, value, source)` table so the UI can show what the score was built on and when.
+
+For ETFs and indices, use the index P/E from the Safra market performance table (already in `house_views`) and the fund's own reported P/E where yfinance has it; PEG does not apply, so the factor uses P/E vs 5-year median only.
+
+**Scoring for a single stock, 0 to 5, three components averaged:**
+
+1. *PEG.* Below 1.0 → 5. 1.0 to 1.5 → 4. 1.5 to 2.0 → 3. 2.0 to 3.0 → 2. Above 3.0 → 1. Negative or missing earnings → 0 and a "no earnings" flag; the name cannot score above 60 total.
+2. *Forward P/E vs sector.* Compute the sector median forward P/E across the universe each week. Z-score the name against it. Below −1 → 5, −1 to −0.3 → 4, −0.3 to +0.3 → 3, +0.3 to +1 → 2, above +1 → 1.
+3. *Trailing P/E vs own history.* Compared with the name's 5-year median trailing P/E from stored weekly fundamentals (build up over time; until 52 weeks exist, use the sector component twice). Same banding as 2.
+
+**Value-trap gate.** A low multiple on collapsing earnings is not cheap. If `earningsGrowth` or `revenueGrowth` is negative, or trailing P/E is below 8 while forward P/E is higher than trailing (earnings expected to fall), cap the Valuation factor at 2 and add the flag "possible value trap". Energy at 13x with earnings −10.9% y/y is the live example.
+
+**Quality gate (applies to the screener in 8c, not to held positions).** A name enters the candidate pool only if: free cash flow positive, net debt / EBITDA below 3 (financials exempt), revenue growth positive, at least 5 analyst opinions. These are not scores, they are the floor.
+
 ## 8. Rules engine and decisions
 
 `desk/rules.py`. Runs after scoring.
@@ -140,20 +198,144 @@ Total = Σ(factor/5 × weight), range 0–100. Bands: 75+ act, 60–74 candidate
 
 Every decision writes `reasoning_md`: regime label, score breakdown, which rules fired, the kill condition being attached, and one line on what would reverse it. Generated by a template first; in phase 4, optionally passed through Claude for a readable paragraph, but the template version is always stored too.
 
+## 8b. Execution layer: broker interface, paper fills, live guards
+
+The system starts as a decision journal and earns the right to execute. The interface is fixed from phase 3 so that switching from paper to live changes one config line and zero decision logic.
+
+### Interface (`desk/broker/base.py`)
+
+```python
+class Order(BaseModel):
+    decision_id: int
+    instrument_id: int
+    side: Literal["BUY", "SELL"]
+    quantity: Decimal | None      # exactly one of quantity / notional
+    notional: Decimal | None      # in instrument currency
+    order_type: Literal["MARKET", "LIMIT"] = "MARKET"
+    limit_price: Decimal | None = None
+    time_in_force: Literal["DAY", "GTC"] = "DAY"
+    client_ref: str               # f"desk-{decision_id}-{date}" so retries are idempotent
+
+class Fill(BaseModel):
+    order_id: str
+    filled_at: datetime
+    quantity: Decimal
+    price: Decimal
+    fees: Decimal
+    currency: str
+    slippage_bps: Decimal | None  # vs reference price recorded on the decision
+
+class Broker(Protocol):
+    name: str
+    mode: Literal["paper", "live"]
+    def positions(self) -> list[Position]: ...
+    def cash(self) -> dict[str, Decimal]: ...           # per currency
+    def submit(self, order: Order) -> str: ...          # returns broker order id
+    def cancel(self, order_id: str) -> None: ...
+    def fills(self, since: datetime) -> list[Fill]: ...
+    def is_tradable(self, instrument: Instrument) -> bool: ...
+```
+
+Tables to add: `orders(id, decision_id, broker, broker_order_id, client_ref, side, quantity, notional, order_type, limit_price, status[pending|submitted|filled|partial|cancelled|rejected], submitted_at, error)` and `fills(id, order_id, filled_at, quantity, price, fees, currency, slippage_bps)`. Executing an order updates `positions` through fills only, never directly.
+
+### PaperBroker (`desk/broker/paper.py`), phase 3
+
+Fills every MARKET order at the next session's open from `prices`, applies a fixed spread cost from `config/costs.yaml` (defaults: 5 bps ETFs, 10 bps US large caps, 25 bps everything else, 50 bps crypto) plus a flat fee if the instrument's venue charges one. LIMIT orders fill if the next session's low/high crosses the limit, otherwise expire at DAY. Records `slippage_bps` against the decision's reference close so the track record in phase 4 includes what execution would actually have cost. Paper cash and positions live in the same tables with `broker="paper"`, so the UI is identical in both modes.
+
+The paper book is seeded from the user's real Revolut positions so the two diverge only through the system's own decisions. A "Paper vs actual" panel shows the gap: what the system would hold vs what the user actually holds after executing or skipping each decision.
+
+### LiveBroker adapters, phase 5 only
+
+Revolut has no API. The tradable slice moves to a broker with one. Two adapters, one built:
+
+- `IBKRBroker`: Interactive Brokers via `ib_async`, connected to an IB Gateway container on the same Docker network. Covers US stocks, UCITS ETFs on Xetra/LSE, and FX conversion. The one to build.
+- `AlpacaBroker`: US stocks and crypto only, simpler API, useful as a fallback or for a US-only sub-book. Stub.
+
+Only the brokerage slice migrates. Commodities pot and SPCX stay on Revolut and remain manual decisions the user confirms in the UI, with `broker="manual"`.
+
+### Live guards, all three required
+
+1. `DESK_LIVE=1` in env, absent by default. Without it every `submit()` to a live adapter raises.
+2. `config/limits.yaml: live.max_daily_notional_eur` (default 2,000) and `live.max_order_notional_eur` (default 1,000). Exceeding either rejects the order and writes a `rules_fired` row with severity mandatory so it is visible.
+3. Kill switch: if `data/KILL` exists, the scheduler skips execution entirely and the UI shows a red banner. The user creates the file by hand or via one button. Removing it requires the UI button plus typing the word CONFIRM.
+
+Additional rules for the live path:
+- Mandatory-rule exits (stop_loss, max_position, max_theme, thesis_invalidated, house_downgrade_to_least) may auto-execute in live mode. Discretionary BUY and ADD decisions never auto-execute; they stay `pending` until the user approves them in the UI, then the approved order is routed through the same `submit()`.
+- Never more than one order per instrument per day. Retries reuse `client_ref`.
+- Live mode runs only after the market for that instrument's venue has been open 15 minutes; no opening-auction orders.
+- Every live fill triggers a reconciliation: `broker.positions()` is compared to the `positions` table and any discrepancy above 0.5% of a position halts execution and flags.
+
+### Promotion criteria, paper to live
+
+Written down so the decision is not made on a good week. All must hold over at least 60 trading days of paper decisions:
+- Mandatory rules fired at least 5 times and, in hindsight at 30 days, following them beat ignoring them on aggregate.
+- Executed-equivalent paper BUY decisions, net of paper costs, are not below a 50/50 blend of VUSA and a EURO STOXX 50 ETF over the same windows.
+- No data-staleness incident lasted longer than 3 days.
+- The user has reviewed every decision in the log (no `pending` older than 7 days).
+
+If the criteria fail, the system stays paper and the track-record page says why. That is a valid outcome.
+
+## 8c. Daily screener
+
+**What the user asked for:** every day, a list of stocks that look undervalued or likely to rise, from valuation, sentiment, news and outlooks.
+
+**What the system will honestly do:** every day, rank a defined universe by the same six-factor conviction score, apply the quality and value-trap gates, and show the top names with their full breakdown. "Will rise" is not a claim the system makes. The claim is "scores highest on the model today, and here is why". The track record page decides whether that is worth anything.
+
+**Universe.** `config/universe.yaml` gets a `screener` section: S&P 500 constituents, STOXX Europe 600 constituents, plus every name on the current Safra US Equity Focus List, restricted to names with `tradable: true` on Revolut. Refresh constituent lists monthly from the Wikipedia tables (free, reliable enough) and flag names that drop out. Roughly 1,100 names.
+
+**Daily pipeline addition, after scoring:**
+1. Prices for the whole screener universe (yfinance bulk download, one call).
+2. Fundamentals are weekly (7c), so this step reads the stored table.
+3. News sentiment: Alpha Vantage allows 25 calls a day. Spend them on the top 20 names by pre-sentiment score plus anything held. Names outside the top 20 use GDELT topic tone for their sector as a proxy and are flagged "sector-level sentiment only".
+4. Score all names. Apply gates.
+5. Write the top 15 and bottom 15 to a new `screener(date, instrument_id, rank, total, factors_json, gates_json)` table.
+
+**UI.** A "Screener" page with two lists: *Candidates* (top 15, gates passed) and *Avoid* (bottom 15, or any name held that scores below 45). Each row expands to the factor breakdown, the fundamentals used with their as-of date, the sentiment source and age, and the Safra view if the name or its sector has one. A candidate with score ≥ 75 and portfolio-fit ≥ 3 gets a "Propose BUY" button that creates a normal decision with kill conditions auto-drafted from the template in 8. Nothing on the screener page is a decision until that button is pressed.
+
+**Anti-churn.** A name has to stay in the top 15 for 3 consecutive trading days before "Propose BUY" is enabled. Sentiment is noisy day to day and a one-day spike is not a signal.
+
+**Track record hook (phase 4).** Every day's top 15 is scored at 30/60/90 days against the S&P 500 and STOXX 600 equal-weight. This is the test of whether the screener has any edge. Show it on the track-record page from the first day, even when it is empty.
+
 ## 9. Phases and acceptance
 
 **Phase 1 — skeleton and data.** Repo, Docker Compose, SQLite, all fetchers with tests using recorded fixtures, daily scheduler, a bare dashboard that shows the tape (S&P, Brent, gold, 10y, VIX, Fed funds, EZ HICP, BTC) from real data. Accept when: `docker compose up` shows today's numbers and `pytest` passes with the network off.
 
 **Phase 2 — house views and portfolio.** Safra extraction pipeline, seed load of August reports, Revolut screenshot ingestion with user confirmation, portfolio view with theme weights, FX exposure and the limit bars. Accept when: dropping a PDF in `inbox/` produces `house_views` rows with `changed_from` populated and the UI shows the upgrade/downgrade log.
 
-**Phase 3 — regime, scores, rules, decisions.** Everything in sections 6 to 8. Decision list with pending/executed/skipped/overridden. Accept when: the daily job produces a decision list, each decision opens to a full breakdown, and marking one executed updates positions.
+**Phase 3 — regime, scores, rules, decisions, paper execution.** Everything in sections 6 to 8b with PaperBroker only. Decision list with pending/executed/skipped/overridden, and a paper book that fills approved decisions at next open with costs. Accept when: the daily job produces a decision list, each decision opens to a full breakdown, approving one creates an order and a paper fill, and the "Paper vs actual" panel shows the gap.
 
-**Phase 4 — self-scoring and polish.** For every decision older than 30/90 days, compute what happened vs. the alternative (held vs. sold, bought vs. skipped) and show hit rate and P&L attribution by rule and by factor. Weekly email digest. Optional Claude-written reasoning. Accept when: the "Track record" page shows at least the seeded August ideas scored against actual prices.
+**Phase 4 — self-scoring and polish.** For every decision older than 30/90 days, compute what happened vs. the alternative (held vs. sold, bought vs. skipped) including paper execution costs, and show hit rate and P&L attribution by rule and by factor. The promotion criteria from 8b are computed live on this page with a pass/fail per criterion. Weekly email digest. Optional Claude-written reasoning. Accept when: the "Track record" page shows at least the seeded August ideas scored against actual prices and the promotion checklist renders.
+
+**Phase 5 — live execution, gated.** Only starts when the phase 4 promotion checklist passes and the user says so explicitly. IBKRBroker adapter, IB Gateway container, the three guards, reconciliation. Accept when: a 1-share live test order round-trips with a fill and reconciliation, the kill switch halts the scheduler, and an order over the daily cap is rejected and logged.
+
+## Regime table additions
+
+Add to `config/regime_fit.yaml`:
+
+```yaml
+  private_health_wearables:   # WHOOP
+    inflation_state: {energy_shock: 3, broad: 2, contained: 3}
+    policy_state:    {hiking: 2, on_hold: 3, cutting: 4}
+    oil_state:       {shock: 3, elevated: 3, normal: 3}
+    vol_state:       {complacent: 3, normal: 3, stressed: 1}
+    note: "Consumer subscription hardware, pre-IPO. IPO windows close when vol is stressed and rates are rising; otherwise regime barely matters. Scored flat so the illiquid limit does the work."
+
+  eu_telecom_income:          # ORA
+    inflation_state: {energy_shock: 3, broad: 3, contained: 3}
+    policy_state:    {hiking: 2, on_hold: 4, cutting: 5}
+    oil_state:       {shock: 3, elevated: 3, normal: 3}
+    vol_state:       {complacent: 3, normal: 4, stressed: 4}
+    note: "Bond proxy with a 4.9% yield. Hiking hurts the multiple; stress helps because it is defensive. Regulated pricing means the inflation dimension is neutral."
+```
+
+## Phase 4, amended
+
+Phase 4 now includes, in this order: (1) sections 7b and 7c, with tests that reproduce the scoring bands; (2) the weekly fundamentals job; (3) section 8c screener and its page; (4) the original phase 4 self-scoring, extended with the screener track record; (5) weekly digest. Accept when: the Screener page shows a ranked list with gates and breakdowns from real data, the deferral rule creates a `deferred` decision in a test with a mocked event calendar, and the track-record page renders the promotion checklist plus the (initially empty) screener hit-rate panel.
 
 ## 10. Deploy
 
 - `docker-compose.yml`: one `app` service (FastAPI + scheduler in one process, uvicorn), one volume for `data/` (SQLite, archive, inbox). No database server.
-- `.env`: `ANTHROPIC_API_KEY`, `FRED_API_KEY`, `ALPHAVANTAGE_API_KEY`, `DESK_BASIC_AUTH_USER/PASS`, `TZ=Europe/Berlin`.
+- `.env`: `ANTHROPIC_API_KEY`, `FRED_API_KEY`, `ALPHAVANTAGE_API_KEY`, `DESK_BASIC_AUTH_USER/PASS`, `TZ=Europe/Berlin`, `DESK_BROKER=paper`. Phase 5 adds `DESK_LIVE`, `IB_GATEWAY_HOST/PORT`, `IB_ACCOUNT` and an `ibgateway` service in compose.
 - Basic auth on every route. Caddy in front for TLS on the Hetzner box, same pattern as the IMPROVR dashboard.
 - Daily job 07:00 Berlin. Manual "Run now" button in the UI.
 - Backups: nightly `sqlite3 .backup` to `data/backups/`, keep 30, plus rsync to the existing IMPROVR backup target.
@@ -167,7 +349,7 @@ Every decision writes `reasoning_md`: regime label, score breakdown, which rules
 
 ## 12. What this deliberately does not do
 
-- It does not auto-trade. Revolut has no API and a system that "decides for you" is only trustworthy if every decision is logged before you act on it.
+- It does not auto-trade until it has earned it. Phases 1 to 4 are paper only. Live execution exists behind the promotion criteria in 8b, three guards and a broker migration off Revolut, and even then only mandatory-rule exits run unattended.
 - It does not backtest the scoring model on history. The Safra input does not exist historically in structured form, so a backtest would be fiction. The track record is built forward from the first real decision.
 - It does not add seasonality rules, alternative data or ML without a written evidence note in `docs/`. The model's legibility is the point.
 - It is not investment advice. It is a decision journal with an opinionated scoring engine, and its author is not a financial adviser.

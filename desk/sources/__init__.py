@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from desk.config import Settings, get_settings
+from desk.sources.aaii import AaiiFetcher
 from desk.sources.alphavantage import AlphaVantageFetcher
 from desk.sources.base import Fetcher, FetchOutcome, Observation
+from desk.sources.cboe import CboeFetcher
+from desk.sources.cot import CotFetcher
 from desk.sources.ecb import EcbFetcher
 from desk.sources.fear_greed import FearGreedFetcher
 from desk.sources.fred import FredFetcher
@@ -30,5 +33,8 @@ def build_fetchers(universe: list[dict], settings: Settings | None = None) -> li
         AlphaVantageFetcher(sentiment_tickers, settings=settings),
         GdeltFetcher(settings=settings),
         FearGreedFetcher(settings=settings),
+        CotFetcher(settings=settings),
+        CboeFetcher(settings=settings),
+        AaiiFetcher(settings=settings),
         ManualFetcher(settings=settings),
     ]

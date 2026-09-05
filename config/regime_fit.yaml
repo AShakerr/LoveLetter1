@@ -132,3 +132,17 @@ themes:
     oil_state:       {shock: 3, elevated: 3, normal: 3}
     vol_state:       {complacent: 3, normal: 3, stressed: 5}
     note: "Included so the model can prefer waiting. Hiking makes cash pay; stressed vol makes it the best asset."
+
+  private_health_wearables:   # WHOOP
+    inflation_state: {energy_shock: 3, broad: 2, contained: 3}
+    policy_state:    {hiking: 2, on_hold: 3, cutting: 4}
+    oil_state:       {shock: 3, elevated: 3, normal: 3}
+    vol_state:       {complacent: 3, normal: 3, stressed: 1}
+    note: "Consumer subscription hardware, pre-IPO. IPO windows close when vol is stressed and rates are rising; otherwise regime barely matters. Scored flat so the illiquid limit does the work."
+
+  eu_telecom_income:          # ORA
+    inflation_state: {energy_shock: 3, broad: 3, contained: 3}
+    policy_state:    {hiking: 2, on_hold: 4, cutting: 5}
+    oil_state:       {shock: 3, elevated: 3, normal: 3}
+    vol_state:       {complacent: 3, normal: 4, stressed: 4}
+    note: "Bond proxy with a 4.9% yield. Hiking hurts the multiple; stress helps because it is defensive. Regulated pricing means the inflation dimension is neutral."

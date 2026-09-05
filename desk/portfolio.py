@@ -135,16 +135,26 @@ def fx_rates(session: Session, currencies: set[str]) -> dict[str, FxRate]:
     return out
 
 
-def select_positions(session: Session) -> tuple[str, list[Position]]:
-    """Confirmed open positions if any exist, else the most recent pending batch (clearly labelled)."""
+def select_positions(session: Session, broker: str = "manual") -> tuple[str, list[Position]]:
+    """Confirmed open positions of one book if any exist, else (manual only) the most recent pending batch."""
     confirmed = session.exec(
-        select(Position).where(Position.confirmed_by_user.is_(True), Position.closed_at.is_(None))
+        select(Position).where(
+            Position.confirmed_by_user.is_(True),
+            Position.closed_at.is_(None),
+            Position.broker == broker,
+        )
     ).all()
     if confirmed:
         return "confirmed", list(confirmed)
+    if broker != "manual":
+        return "empty", []
     pending = session.exec(
         select(Position)
-        .where(Position.confirmed_by_user.is_(False), Position.closed_at.is_(None))
+        .where(
+            Position.confirmed_by_user.is_(False),
+            Position.closed_at.is_(None),
+            Position.broker == "manual",
+        )
         .order_by(Position.id.desc())
     ).all()
     if not pending:
@@ -154,11 +164,14 @@ def select_positions(session: Session) -> tuple[str, list[Position]]:
 
 
 def build_portfolio(
-    session: Session, settings: Settings | None = None, limits: Limits | None = None
+    session: Session,
+    settings: Settings | None = None,
+    limits: Limits | None = None,
+    broker: str = "manual",
 ) -> PortfolioView:
     settings = settings or get_settings()
     limits = limits or Limits.load(settings.config_dir / "limits.yaml")
-    basis, rows = select_positions(session)
+    basis, rows = select_positions(session, broker)
     view = PortfolioView(basis=basis, as_of=max((r.as_of for r in rows), default=None))
     if not rows:
         return view

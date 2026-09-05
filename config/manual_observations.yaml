@@ -14,3 +14,17 @@ observations:
     as_of: 2026-08-15
     unit: "%"
     note: "PLACEHOLDER — update from cbe.org.eg"
+  # Crowd factor fallbacks (docs/BRIEF.md 7b). The aaii fetcher overwrites AAII when it can reach the site.
+  - series: AAII_BULL_BEAR_SPREAD
+    label: AAII bull-bear spread
+    value: 0
+    as_of: 2026-08-15
+    unit: pp
+    note: "PLACEHOLDER — weekly from aaii.com/sentimentsurvey"
+  # Median of published sell-side strategist year-end targets; compared with the Safra target (consensus gap).
+  - series: "CONSENSUS_TARGET:S&P 500 Dec-26"
+    label: Street consensus S&P 500 Dec-26
+    value: 0
+    as_of: 2026-08-15
+    unit: pts
+    note: "PLACEHOLDER — median of published strategist targets"

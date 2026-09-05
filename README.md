@@ -9,8 +9,8 @@ It does not trade and it is not investment advice.
 |---|---|---|
 | 1 | Skeleton, all fetchers with recorded fixtures, daily scheduler, tape dashboard | **done** |
 | 2 | Safra PDF extraction, seed house views, Revolut screenshot ingestion, portfolio view | **done** |
-| 3 | Regime, conviction score, rules engine, decisions, paper broker | **done** |
-| 4 | Self-scoring, weekly digest, Claude-written reasoning | not started |
+| 3 | Regime, conviction score, rules engine, decisions, paper execution (8b) | **done** |
+| 4 | 7b crowd factor, 7c valuation, weekly fundamentals, 8c screener | **done up to the screener page**; self-scoring, promotion checklist and digest next |
 
 ## Run locally
 
@@ -21,7 +21,10 @@ uv run desk init-db
 uv run desk load-fixtures       # offline demo data, tagged source='fixture:*'
 uv run desk seed                # August house views, 4 Sep positions snapshot, regime snapshot
 uv run desk fetch               # live data (needs network + keys); also runs the decision pipeline
-uv run desk decide              # regime -> scores -> rules -> decisions -> paper broker, for today only
+uv run desk decide              # regime -> scores -> rules -> decisions -> paper orders, for today only
+uv run desk fundamentals        # weekly fundamentals refresh (yfinance Ticker.info; Alpha Vantage OVERVIEW fallback)
+uv run desk screener --refresh  # constituents from Wikipedia + Safra focus list, then rank/gate the universe
+uv run desk rescore             # recompute today's scores with the current weights
 uv run desk serve               # http://localhost:8000
 uv run pytest                   # network is disabled for every test
 ```
@@ -118,9 +121,35 @@ page updates the confirmed positions; the decision text is never edited.
   (90 for the SPV) drives the red as-of date and the stale_data rule.
 - `desk seed` extends an already-loaded snapshot batch with tickers the seed file gained since; the new rows
   appear as pending on the Portfolio page until confirmed.
-- `desk/broker.py`: the PaperBroker mirrors every decision at the latest close into a paper book seeded from
-  the confirmed positions; the Decisions page shows "Paper vs actual". `RevolutBroker` is a stub that raises
-  NotImplementedError because Revolut has no API.
+- Execution (8b) is `desk/broker/` + `desk/execution.py`. Every decision becomes an `Order`; mandatory exits are
+  submitted when created, BUY/ADD when you press Approve. The PaperBroker fills MARKET orders at the next
+  session's open with the spread from `config/costs.yaml` (5 bps ETFs, 10 bps US large caps, 25 default, 50
+  crypto) plus any flat venue fee, fills LIMIT orders when the next range crosses the limit (else DAY expiry),
+  and records slippage against the decision's reference close. Paper positions live in `positions` with
+  `broker="paper"`, seeded from the confirmed book; positions change only through fills. `IBKRBroker` and
+  `AlpacaBroker` raise NotImplementedError until phase 5. Guards: `DESK_LIVE=1`, `live.*` caps in
+  `config/limits.yaml` (a breach is a mandatory rules_fired row), and the kill switch `data/KILL` (button on
+  the Decisions page; release needs the word CONFIRM), which halts paper execution too.
+
+## Score, crowd, valuation, screener (phase 4, first half)
+
+- Weights are 25/20/15/15/10/10/5 (Safra, regime, portfolio, valuation, momentum, crowd, seasonality).
+  Momentum is pure 3-month price percentile; news sentiment is recorded and used by momentum_break only.
+- Crowd (7b, `desk/crowd.py`): positioning as a percentile of its 3-year range (CFTC COT for gold, crude,
+  copper, EUR, 10y and S&P e-mini; CBOE total put/call; AAII bull-bear spread; the last two also have manual
+  fallbacks in `config/manual_observations.yaml`), contrarian at the extremes, ±1 for the last relevant
+  surprise from `config/events.yaml`. A Safra target within 2% of `CONSENSUS_TARGET:<key>` caps Safra
+  alignment at 4/5. A BUY/ADD with an event within 2 trading days and positioning above 80 or below 20 is
+  created `deferred`.
+- Valuation (7c, `desk/valuation.py`): stocks average PEG, forward P/E z-score vs the sector median, and
+  trailing P/E vs own 5-year median (sector component twice until 52 weeks exist); value-trap cap at 2;
+  missing earnings cap the total at 60. ETFs use P/E vs the 5-year median. Fundamentals come from the Sunday
+  job (`desk fundamentals`) into the `fundamentals` table.
+- Screener (8c, `desk/screener.py`): `desk screener --refresh` loads S&P 500 and STOXX 600 constituents from
+  Wikipedia plus the Safra focus list into `instruments` (screener_member set; tradable per
+  `screener.tradable_default`), then every day prices the universe, scores it, applies the quality and
+  value-trap gates and writes the top and bottom 15 to `screener`. The Screener page expands each row to its
+  breakdown; Propose BUY needs score ≥ 75, portfolio fit ≥ 3, gates passed and 3 consecutive days in the top 15.
 
 ## Layout
 

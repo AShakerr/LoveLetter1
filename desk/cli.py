@@ -128,6 +128,47 @@ def kill_conditions_cmd() -> None:
 
 
 @app.command()
+def fundamentals(verbose: bool = False) -> None:
+    """Run the weekly fundamentals refresh now (yfinance Ticker.info, Alpha Vantage OVERVIEW fallback)."""
+    _log(verbose)
+    from desk.jobs import run_fundamentals_weekly
+
+    typer.echo(json.dumps(run_fundamentals_weekly(get_settings()), indent=1, default=str))
+
+
+@app.command()
+def screener(
+    refresh: bool = typer.Option(False, help="Refresh constituent lists from Wikipedia first"),
+    verbose: bool = False,
+) -> None:
+    """Run the daily screener (prices for the universe, rank, gates, top/bottom 15)."""
+    _log(verbose)
+    from desk.jobs import refresh_screener_universe, run_screener_daily
+
+    if refresh:
+        typer.echo(json.dumps(refresh_screener_universe(get_settings()), indent=1, default=str))
+    typer.echo(json.dumps(run_screener_daily(get_settings()), indent=1, default=str))
+
+
+@app.command()
+def rescore() -> None:
+    """Recompute today's scores with the current weights (docs/BRIEF.md 7b): existing rows are recomputed, not migrated."""
+    from desk.db import init_db, session_scope
+    from desk.portfolio import build_portfolio
+    from desk.regime import latest_regime
+    from desk.score import score_universe
+
+    settings = get_settings()
+    init_db(settings)
+    with session_scope(settings) as s:
+        res = score_universe(s, build_portfolio(s, settings), latest_regime(s), settings=settings)
+        for r in sorted(res, key=lambda r: -r.row.total):
+            typer.echo(
+                f"{s.get(__import__('desk.models', fromlist=['Instrument']).Instrument, r.row.instrument_id).ticker:16} {r.row.total:5.1f} {r.band}"
+            )
+
+
+@app.command()
 def backup() -> None:
     """Write a consistent SQLite backup to data/backups/."""
     from desk.jobs import backup_sqlite

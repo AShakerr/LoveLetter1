@@ -14,8 +14,10 @@ from typing import Any
 
 from sqlmodel import Session, select
 
-from desk.broker import PaperBroker
 from desk.config import Settings, get_settings
+from desk.crowd import deferral_reason
+from desk.events import load_events_config
+from desk.execution import seed_paper_book, settle_paper, submit_decision
 from desk.kill_conditions import (
     candidate_conditions,
     condition_for,
@@ -26,7 +28,7 @@ from desk.models import Decision, Instrument, InstrumentKind, Position, Pot, Reg
 from desk.portfolio import Limits, PortfolioView, build_portfolio
 from desk.regime import classify
 from desk.rules import Flag, RuleConfig, add_blocked, flags_for, global_flags, run_rules
-from desk.score import WEIGHTS, ScoreResult, band, score_universe
+from desk.score import WEIGHTS, ScoreResult, _latest_price, band, score_universe
 from desk.sources.base import utcnow
 
 log = logging.getLogger(__name__)
@@ -43,7 +45,8 @@ class PipelineResult:
     flags: list[Flag]
     decisions: list[Decision] = field(default_factory=list)
     created: int = 0
-    paper_fills: int = 0
+    orders_submitted: int = 0
+    deferred: int = 0
     notes: list[str] = field(default_factory=list)
 
 
@@ -156,6 +159,11 @@ def reasoning_markdown(
             out.append(f"- Pre-condition: {kill['pre_condition']}")
         out.append("")
     out += ["## What would reverse this", "", reverse, ""]
+    out += [
+        "",
+        "_Crowd measures what the crowd has already done and what it already expects; it does not predict what the crowd will do._",
+        "",
+    ]
     return "\n".join(out)
 
 
@@ -180,6 +188,8 @@ def run_pipeline(
     today = today or dt.date.today()
     limits = Limits.load(settings.config_dir / "limits.yaml")
     cfg = RuleConfig.load(settings)
+    load_events_config(session, settings)
+    settle_paper(session, settings)
     view = build_portfolio(session, settings, limits)
     regime = classify(session, today)
     results = score_universe(session, view, regime, settings=settings, today=today)
@@ -250,6 +260,10 @@ def run_pipeline(
                 "band": res.band if res else None,
                 "provisional": res.provisional if res else None,
                 "basis": view.basis,
+                "reference_price": next(
+                    (p.price for p in view.positions if p.instrument.id == inst.id), None
+                ),
+                "reference_date": str(today),
                 "global_flags": [g.summary for g in global_flags(flags)],
             },
             reasoning_md=reasoning_markdown(
@@ -301,6 +315,15 @@ def run_pipeline(
             out.notes.append(f"{inst.ticker} scores {res.row.total:.0f} but has no limit headroom")
             continue
         action = "ADD" if pv else "BUY"
+        ref_px = (
+            pv.price
+            if pv and pv.price is not None
+            else (
+                _latest_price(session, inst.id).close if _latest_price(session, inst.id) else None
+            )
+        )
+        crowd_p = res.factors["crowd"].inputs.get("percentile")
+        defer = deferral_reason(session, inst, today, crowd_p)
         if pv is not None:
             blocked = add_blocked(session, pv, view, today)
             if blocked:
@@ -341,6 +364,10 @@ def run_pipeline(
                 "band": res.band,
                 "provisional": res.provisional,
                 "basis": view.basis,
+                "reference_price": ref_px,
+                "reference_date": str(today),
+                "crowd_percentile": crowd_p,
+                "deferred_reason": defer,
                 "headroom": {
                     "position": limits.max_single_position - weight,
                     "theme": limits.max_single_theme - theme_w,
@@ -361,6 +388,9 @@ def run_pipeline(
             ),
             created_at=utcnow(),
         )
+        if defer:
+            d.user_status, d.user_note = "deferred", defer
+            out.deferred += 1
         new.append(d)
         add_ids.add(inst.id)
         cash_avail -= size
@@ -418,19 +448,24 @@ def run_pipeline(
     out.decisions = new
     out.created = len(new)
 
-    # 4. paper broker mirrors every new actionable decision
-    broker = PaperBroker()
+    # 4. execution (8b): seed the paper book from the confirmed manual book, then submit mandatory exits now.
+    #    BUY/ADD stay pending (or deferred) until the user approves them.
     if view.basis == "confirmed":
-        broker.seed_from_actual(session)
-    fills = 0
+        seed_paper_book(session, settings)
+    submitted = 0
     for d in new:
-        try:
-            if broker.execute(session, d, view) is not None:
-                fills += 1
-        except Exception as exc:  # noqa: BLE001
-            log.exception("paper execution failed for decision %s", d.id)
-            out.notes.append(f"paper broker: {d.action} {d.instrument_id} failed: {exc}")
-    out.paper_fills = fills
+        if d.action in ("SELL", "TRIM"):
+            try:
+                row = submit_decision(session, d, view=view, settings=settings, today=today)
+                if row.status == "submitted":
+                    submitted += 1
+                elif row.error:
+                    out.notes.append(f"{d.action} #{d.id}: {row.error}")
+            except Exception as exc:  # noqa: BLE001
+                log.exception("submit failed for decision %s", d.id)
+                out.notes.append(f"execution: {d.action} {d.instrument_id} failed: {exc}")
+    out.orders_submitted = submitted
+    settle_paper(session, settings)
     return out
 
 
@@ -443,7 +478,7 @@ def respond(
     settings: Settings | None = None,
 ) -> Decision:
     """Record the user's response. Marking executed updates the confirmed positions (never the decision text)."""
-    if status not in ("pending", "executed", "skipped", "overridden"):
+    if status not in ("pending", "approved", "executed", "skipped", "overridden", "deferred"):
         raise ValueError("bad status")
     settings = settings or get_settings()
     decision.user_status = status
@@ -454,6 +489,14 @@ def respond(
     session.add(decision)
     session.commit()
     session.refresh(decision)
+    if status in ("approved", "executed") and decision.action in ("BUY", "ADD", "SELL", "TRIM"):
+        # the approved order goes through the configured broker; paper fills at the next open
+        row = submit_decision(session, decision, settings=settings, today=dt.date.today())
+        if row.error:
+            decision.user_note = ((decision.user_note or "") + f" [order: {row.error}]").strip()
+            session.add(decision)
+            session.commit()
+        settle_paper(session, settings)
     return decision
 
 
@@ -476,8 +519,6 @@ def _apply_execution(session: Session, decision: Decision, settings: Settings) -
         return
     price = pv.price if pv and pv.price is not None else None
     if price is None:
-        from desk.score import _latest_price
-
         px = _latest_price(session, inst.id)
         price = px.close if px else None
     if price is None or not view.total_eur:

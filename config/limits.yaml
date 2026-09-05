@@ -21,3 +21,7 @@ review:
   momentum_sentiment_floor: -0.15
   stale_days: 7
   stale_days_manual: 14
+# Live-execution guards (docs/BRIEF.md 8b). Live adapters are stubs until phase 5; these still apply.
+live:
+  max_daily_notional_eur: 2000
+  max_order_notional_eur: 1000

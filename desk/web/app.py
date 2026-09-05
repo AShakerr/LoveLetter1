@@ -18,20 +18,33 @@ from fastapi.templating import Jinja2Templates
 from sqlmodel import select
 
 from desk import __version__
-from desk.broker import PaperBroker
+from desk.broker.guards import (
+    GuardError,
+    engage_kill_switch,
+    kill_switch_active,
+    release_kill_switch,
+)
 from desk.config import Settings, get_settings
 from desk.db import init_db, session_scope
 from desk.decisions import list_decisions, respond
+from desk.execution import paper_vs_actual, recent_orders
 from desk.houseviews import change_log, latest_headline, latest_views
 from desk.houseviews import reports as list_reports
 from desk.houseviews import risks as list_risks
 from desk.ingest.revolut import confirm_batch, discard_batch, pending_batches
-from desk.jobs import process_inbox, run_daily, run_decisions
+from desk.jobs import (
+    process_inbox,
+    refresh_screener_universe,
+    run_daily,
+    run_decisions,
+    run_screener_daily,
+)
 from desk.models import Decision, FetchRun, Instrument, RuleFired, Score
 from desk.portfolio import build_portfolio
 from desk.regime import latest_regime
 from desk.rules import RuleConfig
 from desk.scheduler import build_scheduler
+from desk.screener import page_rows, propose_buy, screener_instruments
 from desk.seed import load_all_seeds
 from desk.tape import MORE, TAPE, latest_runs, load_tape
 from desk.universe import sync_instruments
@@ -140,7 +153,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return _render_dashboard(request, flash=f"Run failed: {exc}", partial=True)
         finally:
             _run_lock.release()
-        sources = [s for s in summary if s["source"] != "decisions"]
+        sources = [s for s in summary if s["source"] not in ("decisions", "screener")]
         dec = next((s for s in summary if s["source"] == "decisions"), None)
         ok = sum(1 for s in sources if s["status"] == "ok")
         cached = sum(1 for s in sources if s["status"] == "cached")
@@ -165,8 +178,81 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "now": datetime.now(ZoneInfo(settings.tz)),
             "tz": settings.tz,
             "version": __version__,
+            "kill": kill_switch_active(settings),
             **extra,
         }
+
+    @app.post("/kill-switch/engage")
+    def kill_engage():
+        engage_kill_switch(settings)
+        return RedirectResponse(
+            "/decisions?flash=" + quote_plus("Kill switch engaged: execution halted (data/KILL)"),
+            status_code=303,
+        )
+
+    @app.post("/kill-switch/release")
+    def kill_release(confirm: str = Form("")):
+        try:
+            release_kill_switch(confirm, settings)
+        except GuardError as exc:
+            return RedirectResponse("/decisions?flash=" + quote_plus(str(exc)), status_code=303)
+        return RedirectResponse(
+            "/decisions?flash=" + quote_plus("Kill switch released"), status_code=303
+        )
+
+    @app.get("/screener", response_class=HTMLResponse)
+    def screener(request: Request, flash: str | None = None):
+        with session_scope(settings) as session:
+            data = page_rows(session, settings)
+            return templates.TemplateResponse(
+                request,
+                "screener.html",
+                _base_ctx(
+                    request,
+                    data=data,
+                    universe_n=len(screener_instruments(session)),
+                    flash=flash,
+                    active="screener",
+                ),
+            )
+
+    @app.post("/screener/run")
+    def screener_run():
+        res = run_screener_daily(settings)
+        msg = (
+            f"Screener: {res['status']}, scored {res.get('scored', 0)}, wrote {res.get('rows', 0)}"
+            + (f" — {res['error']}" if res.get("error") else "")
+        )
+        return RedirectResponse("/screener?flash=" + quote_plus(msg), status_code=303)
+
+    @app.post("/screener/refresh")
+    def screener_refresh():
+        res = refresh_screener_universe(settings)
+        return RedirectResponse(
+            "/screener?flash="
+            + quote_plus(
+                "Constituents: "
+                + "; ".join(
+                    f"{k}: {v.get('status')} {v.get('members', v.get('error', ''))}"
+                    for k, v in res.items()
+                )
+            ),
+            status_code=303,
+        )
+
+    @app.post("/screener/propose")
+    def screener_propose(instrument_id: int = Form(...)):
+        with session_scope(settings) as session:
+            try:
+                d = propose_buy(session, instrument_id, settings)
+            except ValueError as exc:
+                return RedirectResponse("/screener?flash=" + quote_plus(str(exc)), status_code=303)
+            did = d.id
+        return RedirectResponse(
+            f"/decisions/{did}?flash="
+            + quote_plus("BUY proposed from the screener; write the thesis before executing"),
+            status_code=303,
+        )
 
     @app.get("/portfolio", response_class=HTMLResponse)
     def portfolio(request: Request, flash: str | None = None):
@@ -306,9 +392,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 sc for sc in scores if 60 <= sc.total < 75 and sc.instrument_id not in decided
             ]
             view = build_portfolio(session, settings)
-            broker = PaperBroker()
-            paper = broker.compare(session, view) if broker.is_seeded(session) else []
-            fills = broker.fills(session, 20)
+            _actual, _paper, paper = paper_vs_actual(session, settings)
+            orders = recent_orders(session, 20)
             dates = sorted({d.date for d in session.exec(select(Decision)).all()}, reverse=True)[
                 :30
             ]
@@ -326,7 +411,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     gflags=gflags,
                     candidates=candidates,
                     paper=paper,
-                    fills=fills,
+                    orders=orders,
+                    broker_name=settings.broker,
                     dates=dates,
                     view=view,
                     status_filter=status,

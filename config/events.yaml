@@ -1,0 +1,16 @@
+# Scheduled events for the crowd factor and the deferral rule (docs/BRIEF.md 7b).
+# Keep this by hand: consensus before the event, actual after it. surprise = actual - consensus (sign matters,
+# `higher_is_good` says which direction counts as "in favour" of the themes listed under `favours`).
+# kind: macro | central_bank | earnings.  For earnings, set ticker; the weekly fundamentals job also adds
+# earnings dates from yfinance for held and watchlist names.
+events:
+  - {date: 2026-09-04, name: "US payrolls (Aug)", kind: macro, consensus: 75000, actual: null,
+     higher_is_good: true, favours: [us_broad, ai_capex, industrials, financials], hurts: [gold, cash_eur]}
+  - {date: 2026-09-10, name: "ECB decision", kind: central_bank, consensus: 2.50, actual: null,
+     higher_is_good: false, favours: [eu_broad, eu_telecom_income], hurts: []}
+  - {date: 2026-09-11, name: "US CPI (Aug)", kind: macro, consensus: 3.4, actual: null,
+     higher_is_good: false, favours: [us_broad, ai_capex, em_broad], hurts: [gold]}
+  - {date: 2026-09-16, name: "FOMC decision", kind: central_bank, consensus: 3.75, actual: null,
+     higher_is_good: false, favours: [us_broad, ai_capex, em_broad, ev_auto, crypto], hurts: [cash_eur]}
+  - {date: 2026-09-17, name: "EZ HICP (Aug final)", kind: macro, consensus: 3.3, actual: null,
+     higher_is_good: false, favours: [eu_broad], hurts: []}

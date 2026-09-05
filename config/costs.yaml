@@ -1,0 +1,10 @@
+# Paper execution costs (docs/BRIEF.md 8b). Spread in basis points, applied against the next session's open.
+spread_bps:
+  etf: 5
+  us_large_cap: 10        # stocks on NYSE/NASDAQ with market cap >= us_large_cap_min_market_cap (or unknown cap)
+  default: 25
+  crypto: 50
+us_large_cap_min_market_cap: 10000000000
+# Flat fee per order by venue, in the instrument's currency. Revolut charges none on the plan assumed here.
+flat_fee:
+  default: 0.0

@@ -13,8 +13,11 @@ from pathlib import Path
 from desk.config import REPO_ROOT, Settings
 from desk.db import init_db, session_scope
 from desk.persist import persist_observations, record_run
+from desk.sources.aaii import AaiiFetcher
 from desk.sources.alphavantage import AlphaVantageFetcher
 from desk.sources.base import Fetcher, FetchOutcome, utcnow
+from desk.sources.cboe import CboeFetcher
+from desk.sources.cot import CotFetcher
 from desk.sources.ecb import EcbFetcher
 from desk.sources.fear_greed import FearGreedFetcher
 from desk.sources.fred import FredFetcher
@@ -34,6 +37,9 @@ def fixture_fetchers(settings: Settings) -> list[tuple[Fetcher, str]]:
         (AlphaVantageFetcher([], settings=settings), "alphavantage.json"),
         (GdeltFetcher(settings=settings), "gdelt.json"),
         (FearGreedFetcher(settings=settings), "fear_greed.json"),
+        (CotFetcher(settings=settings), "cot.json"),
+        (CboeFetcher(settings=settings), "cboe.json"),
+        (AaiiFetcher(settings=settings), "aaii.json"),
         (ManualFetcher(settings=settings), "manual.json"),
     ]
 
@@ -61,4 +67,33 @@ def load_fixtures(settings: Settings, fixtures_dir: Path | None = None) -> list[
             )
             record_run(session, outcome, rows)
             summary.append({"source": fetcher.name, "status": "ok", "rows": rows})
+
+        summary.append(load_fixture_fundamentals(session, fixtures_dir / "fundamentals.json"))
+        from desk.events import load_events_config
+
+        summary.append(
+            {"source": "events", "status": "ok", "rows": load_events_config(session, settings)}
+        )
     return summary
+
+
+def load_fixture_fundamentals(session, path: Path) -> dict:
+    """tests/fixtures/fundamentals.json: {"date": ..., "by_ticker": {TICKER: {field: value, "_sector": ...}}}"""
+    import datetime as dt
+
+    from sqlmodel import select
+
+    from desk.fundamentals import store_fundamentals
+    from desk.models import Instrument
+
+    if not path.exists():
+        return {"source": "fundamentals", "status": "missing", "rows": 0}
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    on = dt.date.fromisoformat(doc["date"])
+    n = 0
+    for ticker, values in doc["by_ticker"].items():
+        inst = session.exec(select(Instrument).where(Instrument.ticker == ticker)).first()
+        if inst is None:
+            continue
+        n += store_fundamentals(session, inst, on, values, "fixture:yfinance")
+    return {"source": "fundamentals", "status": "ok", "rows": n}

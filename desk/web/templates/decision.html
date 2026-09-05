@@ -14,15 +14,17 @@
   <div class="reasoning">{{ d.reasoning_md | markdown | safe }}</div>
   <div>
     <h2>Your response</h2>
-    {% if d.user_status == 'pending' %}
+    {% if d.user_status in ('pending', 'deferred') %}
+    {% if d.user_status == 'deferred' %}<div class="warn-line">⚠ Deferred: {{ d.user_note }}</div>{% endif %}
     <form method="post" action="/decisions/{{ d.id }}/respond" class="respond">
       <textarea name="note" rows="3" placeholder="note (optional): what you did, at what price, or why not"></textarea>
       <div class="btns">
+        {% if d.action in ('BUY', 'ADD') %}<button type="submit" name="status" value="approved" title="routes the order through the configured broker (paper: fills at the next open)">Approve</button>{% endif %}
         <button type="submit" name="status" value="executed">Executed</button>
         <button type="submit" name="status" value="skipped" class="secondary">Skipped</button>
         <button type="submit" name="status" value="overridden" class="secondary">Overridden</button>
       </div>
-      <p class="muted small">Executed updates the confirmed positions (a BUY opens a position at the latest close with the kill condition attached; SELL closes; TRIM reduces). The decision text itself is never edited.</p>
+      <p class="muted small">Approve sends the order to the configured broker (paper by default: filled at the next session's open with spread costs). Executed means you did it on Revolut: it updates the confirmed positions and also mirrors the order in the paper book. The decision text itself is never edited.</p>
     </form>
     {% else %}
     <p><span class="pill status-{{ d.user_status }}">{{ d.user_status }}</span>{% if d.executed_at %} at {{ d.executed_at.strftime('%Y-%m-%d %H:%M') }} UTC{% endif %}</p>

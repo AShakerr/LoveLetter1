@@ -61,6 +61,7 @@ instruments:
   - {ticker: "^GDAXI", name: DAX, kind: index, currency: EUR, tradable: false, region: Germany, theme: eu_broad}
   - {ticker: "^STOXX50E", name: Euro Stoxx 50, kind: index, currency: EUR, tradable: false, region: Euro area, theme: eu_broad}
   - {ticker: "^VIX", name: CBOE VIX, kind: index, currency: USD, tradable: false, region: USA}
+  - {ticker: "^VIX3M", name: CBOE VIX 3-month, kind: index, currency: USD, tradable: false, region: USA}
   - {ticker: DXY, name: US Dollar Index, kind: index, currency: USD, tradable: false, source_symbol: DX-Y.NYB}
   - {ticker: "GC=F", name: Gold futures, kind: commodity, currency: USD, tradable: false, theme: gold}
   - {ticker: "CL=F", name: WTI crude futures, kind: commodity, currency: USD, tradable: false, theme: energy}
@@ -71,3 +72,15 @@ instruments:
   - {ticker: ETH-USD, name: Ethereum, kind: crypto, currency: USD, tradable: false, theme: crypto}
   - {ticker: EURUSD=X, name: EUR/USD, kind: fx, currency: USD, tradable: false}
   - {ticker: EURGBP=X, name: EUR/GBP, kind: fx, currency: GBP, tradable: false}
+
+# ---- daily screener universe (docs/BRIEF.md 8c) -------------------------------------------------
+# Constituent lists are refreshed monthly from Wikipedia (desk screener refresh) into `instruments` with
+# screener_member set. Revolut's tradable list is not machine-readable: tradable_default says what to assume per
+# source; override single names in `tradable_overrides`. Names that drop out of a list are flagged, not deleted.
+screener:
+  sources: [sp500, stoxx600, safra_focus_list]
+  tradable_default: {sp500: true, stoxx600: false, safra_focus_list: true}
+  tradable_overrides: {}
+  top_n: 15
+  anti_churn_days: 3
+  sentiment_calls_per_day: 20

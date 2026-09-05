@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}desk · screener{% endblock %}
+{% block content %}
+{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+<section class="toolbar">
+  <form method="post" action="/screener/run"><button type="submit">Run screener</button></form>
+  <form method="post" action="/screener/refresh"><button type="submit" class="secondary">Refresh constituents</button></form>
+  <span class="muted small">{{ universe_n }} names in the universe · top {{ data.cfg.top_n }} / bottom {{ data.cfg.top_n }} written daily · "Propose BUY" needs score ≥ 75, portfolio fit ≥ 3, gates passed and {{ data.cfg.anti_churn_days }} consecutive days in the top {{ data.cfg.top_n }}</span>
+</section>
+<p class="muted small">This page ranks the universe on the model. "Scores highest on the model today, and here is why" is the whole claim; the track record page decides whether that is worth anything. Nothing here is a decision until Propose BUY is pressed.</p>
+
+{% if not data.date %}
+<section><p class="muted">No screener run yet. Refresh constituents (needs network), run the weekly fundamentals job, then run the screener.</p></section>
+{% else %}
+{% macro row(it) %}
+<details class="srow {% if it.gates.passed %}pass{% else %}gated{% endif %}">
+  <summary>
+    <span class="mono rank">#{{ it.row.rank }}</span>
+    <strong>{{ it.inst.ticker }}</strong> <span class="muted small">{{ it.inst.name }} · {{ it.inst.sector or '—' }}{% if it.held %} · <span class="pill">held</span>{% endif %}</span>
+    <span class="mono score">{{ '%.0f' % it.row.total }}</span>
+    <span class="pill band-{{ it.factors.get('safra') and (it.row.total >= 75 and 'act' or it.row.total >= 60 and 'candidate' or it.row.total >= 45 and 'watch' or 'avoid') }}">{{ it.row.total >= 75 and 'act' or it.row.total >= 60 and 'candidate' or it.row.total >= 45 and 'watch' or 'avoid' }}</span>
+    {% if it.gates.passed %}<span class="pill ok">gates passed</span>{% else %}<span class="pill review" title="{{ (it.gates.quality_reasons or []) | join('; ') }}">gated</span>{% endif %}
+    {% for f in it.flags %}<span class="pill failed">{{ f }}</span>{% endfor %}
+    {% if it.sentiment.level == 'sector' %}<span class="pill cached">sector-level sentiment only</span>{% endif %}
+    <span class="muted small">top-{{ data.cfg.top_n }} streak {{ it.streak }}d</span>
+    {% if it.proposed %}<a class="pill status-pending" href="/decisions/{{ it.proposed.id }}">proposed #{{ it.proposed.id }}</a>
+    {% elif it.can_propose %}<form method="post" action="/screener/propose" style="display:inline"><input type="hidden" name="instrument_id" value="{{ it.inst.id }}"><button type="submit" class="tiny">Propose BUY</button></form>{% endif %}
+  </summary>
+  <div class="sbody">
+    <table class="runs small"><thead><tr><th>Factor</th><th>Score</th><th>Basis</th></tr></thead><tbody>
+      {% for name in ['safra','regime','portfolio','valuation','momentum','crowd','season'] %}{% set f = it.factors.get(name) or {} %}
+      <tr><td>{{ name }}</td><td class="mono">{{ '%.2f' % (f.value or 0) }}</td><td class="muted small">{{ f.inputs | tojson | truncate(220) }}</td></tr>{% endfor %}
+    </tbody></table>
+    <div class="cols">
+      <div><h3>Gates</h3><ul class="small">
+        <li>quality: {{ 'passed' if it.gates.quality else 'failed' }}{% if it.gates.quality_reasons %} — {{ it.gates.quality_reasons | join('; ') }}{% endif %}</li>
+        <li>value trap: {{ 'yes' if it.gates.value_trap else 'no' }} · no earnings: {{ 'yes' if it.gates.no_earnings else 'no' }}</li>
+        <li>fundamentals as of {{ it.gates.fundamentals_as_of or '—' }}</li></ul></div>
+      <div><h3>Fundamentals used</h3><ul class="small">{% for k in ['trailingPE','forwardPE','pegRatio','revenueGrowth','earningsGrowth','freeCashflow','totalDebt','ebitda','numberOfAnalystOpinions','marketCap'] %}<li>{{ k }}: <span class="mono">{{ it.fundamentals.get(k) if it.fundamentals.get(k) is not none else '—' }}</span></li>{% endfor %}</ul></div>
+      <div><h3>Sentiment</h3><p class="small">{{ it.sentiment | tojson }}</p>
+        <h3>Safra</h3><p class="small">{% if it.safra %}{{ it.safra.scope }} {{ it.safra.key }}: <span class="stance {{ it.safra.stance }}">{{ it.safra.stance }}</span> {{ it.safra.value or '' }} ({{ it.safra.date }}){% else %}no view for the name or its sector{% endif %}</p></div>
+    </div>
+    {% if it.notes %}<p class="muted small">{{ it.notes | join(' · ') }}</p>{% endif %}
+  </div>
+</details>
+{% endmacro %}
+
+<section>
+  <h2>Candidates <span class="muted">· {{ data.date }} · top {{ data.cfg.top_n }}</span></h2>
+  {% for it in data.candidates %}{{ row(it) }}{% else %}<p class="muted">Nothing scored.</p>{% endfor %}
+</section>
+<section>
+  <h2>Avoid <span class="muted">· bottom {{ data.cfg.top_n }}, plus held names below 45</span></h2>
+  {% for it in data.avoid %}{{ row(it) }}{% else %}<p class="muted">Nothing here.</p>{% endfor %}
+</section>
+{% endif %}
+{% endblock %}

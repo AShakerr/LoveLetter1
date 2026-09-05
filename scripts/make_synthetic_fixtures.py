@@ -326,6 +326,134 @@ def manual() -> dict:
     }
 
 
+FUNDAMENTALS = {  # synthetic yfinance Ticker.info shapes; sectors as yfinance names them
+    "TSLA": {
+        "trailingPE": 68.0,
+        "forwardPE": 55.0,
+        "pegRatio": 3.4,
+        "priceToBook": 9.1,
+        "enterpriseToEbitda": 40.0,
+        "freeCashflow": 3.2e9,
+        "totalDebt": 7.5e9,
+        "totalCash": 3.0e10,
+        "ebitda": 1.3e10,
+        "revenueGrowth": 0.04,
+        "earningsGrowth": -0.12,
+        "targetMeanPrice": 340.0,
+        "numberOfAnalystOpinions": 42,
+        "recommendationMean": 2.8,
+        "marketCap": 1.1e12,
+        "trailingEps": 5.2,
+        "forwardEps": 6.4,
+        "_sector": "Consumer Cyclical",
+    },
+    "NVDA": {
+        "trailingPE": 45.0,
+        "forwardPE": 30.0,
+        "pegRatio": 1.1,
+        "priceToBook": 30.0,
+        "enterpriseToEbitda": 35.0,
+        "freeCashflow": 7.0e10,
+        "totalDebt": 1.0e10,
+        "totalCash": 4.0e10,
+        "ebitda": 9.0e10,
+        "revenueGrowth": 0.55,
+        "earningsGrowth": 0.6,
+        "targetMeanPrice": 240.0,
+        "numberOfAnalystOpinions": 60,
+        "recommendationMean": 1.5,
+        "marketCap": 4.5e12,
+        "trailingEps": 4.2,
+        "forwardEps": 6.3,
+        "_sector": "Technology",
+    },
+    "ORA": {
+        "trailingPE": 12.5,
+        "forwardPE": 11.0,
+        "pegRatio": 2.2,
+        "priceToBook": 1.2,
+        "enterpriseToEbitda": 5.5,
+        "freeCashflow": 3.5e9,
+        "totalDebt": 3.3e10,
+        "totalCash": 8.0e9,
+        "ebitda": 1.3e10,
+        "revenueGrowth": 0.01,
+        "earningsGrowth": 0.05,
+        "targetMeanPrice": 17.0,
+        "numberOfAnalystOpinions": 18,
+        "recommendationMean": 2.3,
+        "marketCap": 4.3e10,
+        "trailingEps": 1.28,
+        "forwardEps": 1.45,
+        "_sector": "Communication Services",
+    },
+    "VUSA": {"trailingPE": 21.9, "marketCap": None, "_sector": None},
+    "EXW1": {"trailingPE": 16.4, "_sector": None},
+    "X9I1": {"trailingPE": 11.8, "_sector": None},
+}
+
+
+def fundamentals() -> dict:
+    return {"date": END.isoformat(), "by_ticker": FUNDAMENTALS}
+
+
+def cot() -> dict:
+    """Legacy futures-only CSV text per year: 3 years of weekly rows for the six markets we track.
+    Gold trends to a 3-year high in net length so the crowd factor reads it as crowded long."""
+    header = (
+        "Market and Exchange Names,As of Date in Form YYMMDD,As of Date in Form YYYY-MM-DD,CFTC Contract Market Code,"
+        "Open Interest (All),Noncommercial Positions-Long (All),Noncommercial Positions-Short (All)"
+    )
+    markets = {
+        "GOLD - COMMODITY EXCHANGE INC.": (250000, 60000),
+        "CRUDE OIL, LIGHT SWEET - NEW YORK MERCANTILE EXCHANGE": (300000, 120000),
+        "COPPER- #1 - COMMODITY EXCHANGE INC.": (70000, 50000),
+        "E-MINI S&P 500 - CHICAGO MERCANTILE EXCHANGE": (400000, 380000),
+        "EURO FX - CHICAGO MERCANTILE EXCHANGE": (150000, 110000),
+        "10-YEAR U.S. TREASURY NOTES - CHICAGO BOARD OF TRADE": (500000, 900000),
+    }
+    out: dict[str, str] = {}
+    d = END - timedelta(days=(END.weekday() - 1) % 7)  # last Tuesday
+    rows_by_year: dict[str, list[str]] = {}
+    for i in range(156):
+        for name, (lng, sht) in markets.items():
+            drift = rng.gauss(0, 0.08)
+            if name.startswith("GOLD"):
+                drift = (
+                    rng.gauss(0, 0.02) - i * 0.006
+                )  # older rows smaller: the latest is the 3-year maximum
+            long_ = max(0, round(lng * (1 + drift)))
+            short = max(0, round(sht * (1 - drift)))
+            rows_by_year.setdefault(str(d.year), []).append(
+                f'"{name}",{d:%y%m%d},{d.isoformat()},{abs(hash(name)) % 100000},{long_ + short},{long_},{short}'
+            )
+        d -= timedelta(days=7)
+    for y, rows in rows_by_year.items():
+        out[y] = header + "\n" + "\n".join(rows)
+    return out
+
+
+def cboe() -> dict:
+    days = [END - timedelta(days=i) for i in range(400)][::-1]
+    lines = ["Cboe daily market statistics", "DATE,CALL,PUT,TOTAL,P/C Ratio"]
+    v = 0.9
+    for d in days:
+        if d.weekday() >= 5:
+            continue
+        v = min(1.6, max(0.5, v + rng.gauss(0, 0.04)))
+        lines.append(f"{d.isoformat()},1000000,{int(1000000 * v)},{int(1000000 * (1 + v))},{v:.2f}")
+    return {"csv": "\n".join(lines)}
+
+
+def aaii() -> dict:
+    html = (
+        "<html><body><h2>AAII Investor Sentiment Survey</h2><p>Week ending September 3, 2026</p>"
+        "<table><tr><td>Bullish</td><td>41.2%</td></tr><tr><td>Neutral</td><td>27.1%</td></tr>"
+        "<tr><td>Bearish</td><td>31.7%</td></tr></table></body></html>"
+    )
+    return {"html": html}
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     for name, fn in {
@@ -336,6 +464,10 @@ def main() -> None:
         "gdelt": gdelt,
         "fear_greed": fear_greed,
         "manual": manual,
+        "fundamentals": fundamentals,
+        "cot": cot,
+        "cboe": cboe,
+        "aaii": aaii,
     }.items():
         path = OUT / f"{name}.json"
         path.write_text(json.dumps(fn(), indent=None, separators=(",", ":")), encoding="utf-8")

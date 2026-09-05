@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = Field(default=True, alias="DESK_SCHEDULER_ENABLED")
     # The brief names claude-sonnet-4-5 "or whatever is current"; Sonnet 5 is the current Sonnet.
     claude_model: str = Field(default="claude-sonnet-5", alias="DESK_CLAUDE_MODEL")
+    # execution (docs/BRIEF.md 8b): paper by default; live adapters are stubs and need DESK_LIVE=1 as well
+    broker: str = Field(default="paper", alias="DESK_BROKER")
+    live: bool = Field(default=False, alias="DESK_LIVE")
+    fundamentals_weekday: int = Field(default=6, alias="DESK_FUNDAMENTALS_WEEKDAY")  # 6 = Sunday
+    fundamentals_hour: int = Field(default=6, alias="DESK_FUNDAMENTALS_HOUR")
+    screener_refresh_day: int = Field(default=1, alias="DESK_SCREENER_REFRESH_DAY")  # day of month
 
     @property
     def db_path(self) -> Path:
@@ -50,6 +56,10 @@ class Settings(BaseSettings):
     @property
     def db_url(self) -> str:
         return f"sqlite:///{self.db_path}"
+
+    @property
+    def kill_file(self) -> Path:
+        return self.data_dir / "KILL"
 
     @property
     def cache_dir(self) -> Path:

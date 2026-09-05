@@ -37,6 +37,7 @@ def test_decisions_list_and_detail(client, settings):
     assert r.status_code == 200
     body = html.unescape(r.text)
     assert "Regime 2026-09-04" in body and "COMMODITIES_POT" in body and "Paper vs actual" in body
+    assert "Engage kill switch" in body
     assert "regime_fit.yaml is missing" not in body
     assert "trigger" in body  # kill-condition trigger count on the held positions
     with session_scope(settings) as s:
@@ -77,4 +78,12 @@ def test_confirm_composition_route(client, settings):
     r = client.post("/decisions/run", headers=_auth(), follow_redirects=False)
     assert r.status_code == 303
     body = html.unescape(client.get("/decisions", headers=_auth()).text)
-    assert "TRIM" in body
+    with session_scope(settings) as s:
+        from desk.models import FetchRun
+
+        last = s.exec(
+            select(FetchRun).where(FetchRun.source == "decisions").order_by(FetchRun.id.desc())
+        ).first()
+        run_note = (last.status, last.error) if last else None
+    # the pot's own kill trigger (theme_weight('gold') > 35) is mandatory once the composition is confirmed: SELL outranks TRIM
+    assert ("SELL" in body or "TRIM" in body) and "thesis_invalidated" in body, run_note

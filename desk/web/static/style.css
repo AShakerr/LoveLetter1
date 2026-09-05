@@ -95,3 +95,18 @@ pre.json { font-size: 11px; max-height: 400px; overflow: auto; background: var(-
 button.tiny { font-size: 10px; padding: 2px 6px; margin-left: 6px; }
 tr.diff td { background: rgba(210,153,34,.08); }
 .toolbar a.active { color: var(--fg); font-weight: 600; }
+
+/* screener */
+details.srow { background: var(--panel); border: 1px solid var(--line); border-left-width: 4px; border-radius: 8px; padding: 6px 12px; margin-bottom: 6px; }
+details.srow.pass { border-left-color: var(--up); } details.srow.gated { border-left-color: var(--warn); }
+details.srow summary { cursor: pointer; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+details.srow .rank { color: var(--muted); width: 36px; } details.srow .score { font-size: 18px; font-weight: 700; }
+.sbody { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 8px; }
+
+/* 8b */
+.killbanner { background: #5a1414; color: #fff; text-align: center; padding: 8px; font-weight: 700; letter-spacing: .04em; }
+button.danger { background: var(--down); color: #fff; }
+.confirm { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; margin-right: 6px; }
+.pill.status-approved { background: #1f2a3a; color: var(--accent); } .pill.status-deferred { background: #3a2f12; color: var(--warn); }
+.pill.status-submitted { background: #1f2a3a; color: var(--accent); } .pill.status-filled { background: #1a3a24; color: var(--up); }
+.pill.status-rejected, .pill.status-cancelled { background: #3a1a1a; color: var(--down); }

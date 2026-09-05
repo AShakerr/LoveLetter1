@@ -25,7 +25,7 @@
   <h2>Decisions {% if day %}<span class="muted">· {{ day }}</span>{% endif %}
     <span class="muted small" style="text-transform:none;letter-spacing:0">
       · <a href="/decisions{% if day %}?date={{ day }}{% endif %}">all</a>
-      {% for st in ['pending','executed','skipped','overridden'] %}· <a href="/decisions?{% if day %}date={{ day }}&{% endif %}status={{ st }}">{{ st }}</a>{% endfor %}</span></h2>
+      {% for st in ['pending','deferred','approved','executed','skipped','overridden'] %}· <a href="/decisions?{% if day %}date={{ day }}&{% endif %}status={{ st }}">{{ st }}</a>{% endfor %}</span></h2>
   {% if not rows %}<p class="muted">No decisions yet. Press <em>Run decisions</em> (needs positions and fixture or live prices).</p>{% else %}
   <table class="runs decisions">
     <thead><tr><th>Action</th><th>Ticker</th><th>Size</th><th>Score</th><th>Rules</th><th>Kill condition</th><th>Status</th><th></th></tr></thead>
@@ -64,7 +64,35 @@
 {% endif %}
 
 <section>
-  <h2>Paper vs actual <span class="muted">· paper book executes every decision at the close; actual is what you confirmed</span></h2>
+  <h2>Execution <span class="muted">· broker: {{ broker_name }} · mandatory exits are submitted when created; BUY/ADD when you approve them; paper fills at the next open with costs from config/costs.yaml</span></h2>
+  <div class="toolbar">
+    {% if kill %}
+    <form method="post" action="/kill-switch/release"><input name="confirm" placeholder="type CONFIRM" class="confirm"><button type="submit" class="secondary">Release kill switch</button></form>
+    {% else %}
+    <form method="post" action="/kill-switch/engage"><button type="submit" class="danger">Engage kill switch</button></form>
+    <span class="muted small">creates data/KILL; the scheduler then skips all execution</span>
+    {% endif %}
+  </div>
+  {% if orders %}
+  <table class="runs small">
+    <thead><tr><th>Date</th><th>Decision</th><th>Side</th><th>Ticker</th><th>Qty / notional</th><th>Status</th><th>Fill</th><th>Slippage</th><th>Note</th></tr></thead>
+    <tbody>
+    {% for o, f in orders %}
+      <tr><td class="mono">{{ o.order_date }}</td><td><a href="/decisions/{{ o.decision_id }}">#{{ o.decision_id }}</a></td><td>{{ o.side }}</td>
+        <td>{{ instruments[o.instrument_id].ticker }}</td>
+        <td class="mono">{% if o.quantity %}{{ o.quantity | num(3) }}{% else %}{{ o.notional | num(0) }} {{ o.currency }}{% endif %}</td>
+        <td><span class="pill status-{{ o.status }}">{{ o.status }}</span></td>
+        <td class="mono">{% if f %}{{ f.quantity | num(3) }} @ {{ f.price | num(2) }} {{ f.currency }}{% if f.fees %} + {{ f.fees | num(2) }} fee{% endif %}{% else %}—{% endif %}</td>
+        <td class="mono">{% if f and f.slippage_bps is not none %}{{ '%+.0f' % f.slippage_bps }} bps{% endif %}</td>
+        <td class="muted small">{{ (f.note if f else o.error) or '' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">No orders yet.</p>{% endif %}
+</section>
+
+<section>
+  <h2>Paper vs actual <span class="muted">· the paper book starts as your confirmed positions and diverges only through the system's decisions</span></h2>
   {% if not paper %}<p class="muted">Paper book not seeded yet: it is seeded from the confirmed positions on the first decision run after you confirm a snapshot.</p>
   {% else %}
   <table class="runs">
@@ -80,10 +108,6 @@
     {% endfor %}
     </tbody>
   </table>
-  {% if fills %}<h3>Paper fills</h3>
-  <table class="runs small"><thead><tr><th>Date</th><th>Decision</th><th>Side</th><th>Ticker</th><th>Qty</th><th>Price</th></tr></thead><tbody>
-    {% for f in fills %}<tr><td class="mono">{{ f.date }}</td><td><a href="/decisions/{{ f.decision_id }}">#{{ f.decision_id }}</a></td><td>{{ f.side }}</td>
-      <td>{{ instruments[f.instrument_id].ticker }}</td><td class="mono">{{ f.quantity | num(3) }}</td><td class="mono">{{ f.price | num(2) }} {{ f.currency }}</td></tr>{% endfor %}</tbody></table>{% endif %}
   {% endif %}
 </section>
 {% endblock %}

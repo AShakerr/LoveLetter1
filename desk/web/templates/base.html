@@ -15,10 +15,12 @@
       <a href="/portfolio" class="{% if active == 'portfolio' %}active{% endif %}">Portfolio</a>
       <a href="/house-views" class="{% if active == 'house' %}active{% endif %}">House views</a>
       <a href="/decisions" class="{% if active == 'decisions' %}active{% endif %}">Decisions</a>
+      <a href="/screener" class="{% if active == 'screener' %}active{% endif %}">Screener</a>
       <a class="disabled" title="phase 4">Track record</a>
     </nav>
     <div class="clock muted">{{ now.strftime('%a %d %b %Y %H:%M') }} {{ tz }}</div>
   </header>
+  {% if kill %}<div class="killbanner">KILL SWITCH ACTIVE — execution halted (data/KILL). Paper and live orders are refused until it is released on the Decisions page.</div>{% endif %}
   <main>
     {% block content %}{% endblock %}
   </main>

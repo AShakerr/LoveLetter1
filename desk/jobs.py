@@ -10,6 +10,7 @@ from pathlib import Path
 
 from desk.config import Settings, get_settings
 from desk.db import init_db, session_scope
+from desk.models import FetchRun
 from desk.persist import persist_observations, record_run
 from desk.sources import build_fetchers
 from desk.sources.base import Fetcher
@@ -54,13 +55,13 @@ def run_daily(
             log.info("%s: %s (%d rows) %s", f.name, outcome.status, rows, outcome.error or "")
     if decide:
         summary.append(run_decisions(settings))
+        summary.append(run_screener_daily(settings))
     return summary
 
 
 def run_decisions(settings: Settings | None = None) -> dict:
     """Regime -> scores -> rules -> decisions -> paper broker. Logged as a fetch_runs row named 'decisions'."""
     from desk.decisions import run_pipeline
-    from desk.models import FetchRun
 
     settings = settings or get_settings()
     init_db(settings)
@@ -110,7 +111,8 @@ def run_decisions(settings: Settings | None = None) -> dict:
             "counts": {
                 "decisions": res.created,
                 "flags": len(res.flags),
-                "paper_fills": res.paper_fills,
+                "orders_submitted": res.orders_submitted,
+                "deferred": res.deferred,
             },
         }
 
@@ -154,6 +156,112 @@ def scan_inbox(settings: Settings | None = None) -> None:
     for kind, items in result.items():
         for it in items:
             log.info("inbox %s: %s", kind, it)
+
+
+def run_screener_daily(settings: Settings | None = None) -> dict:
+    """Prices for the screener universe (one bulk call), then rank, gate and write the day's rows."""
+    from desk.screener import run_screener, screener_instruments
+    from desk.sources.yfinance_source import YFinanceFetcher
+
+    settings = settings or get_settings()
+    init_db(settings)
+    started = datetime.utcnow()
+    with session_scope(settings) as session:
+        try:
+            members = screener_instruments(session)
+            symbols = {
+                i.ticker: i.source_symbol or i.ticker
+                for i in members
+                if not i.source_symbol or "." not in (i.source_symbol or "") or True
+            }
+            fetched = 0
+            if symbols:
+                outcome = YFinanceFetcher(symbols, settings=settings).run()
+                if outcome.observations:
+                    counts = persist_observations(session, outcome.observations)
+                    fetched = sum(v for k, v in counts.items() if not k.startswith("skipped"))
+            res = run_screener(session, settings)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("screener failed")
+            session.add(
+                FetchRun(
+                    source="screener",
+                    started_at=started,
+                    finished_at=datetime.utcnow(),
+                    status="failed",
+                    rows=0,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            )
+            session.commit()
+            return {"source": "screener", "status": "failed", "rows": 0, "error": str(exc)}
+        session.add(
+            FetchRun(
+                source="screener",
+                started_at=started,
+                finished_at=datetime.utcnow(),
+                status="ok",
+                rows=res.get("written", 0),
+                error=res.get("note"),
+            )
+        )
+        session.commit()
+        return {
+            "source": "screener",
+            "status": "ok",
+            "rows": res.get("written", 0),
+            "scored": res.get("scored"),
+            "prices": fetched,
+            "error": res.get("note"),
+        }
+
+
+def run_fundamentals_weekly(settings: Settings | None = None) -> dict:
+    """Sunday job (docs/BRIEF.md 7c): yfinance Ticker.info for every stock/ETF in the universe, AV OVERVIEW fallback."""
+    from desk.fundamentals import run_weekly
+
+    settings = settings or get_settings()
+    init_db(settings)
+    started = datetime.utcnow()
+    with session_scope(settings) as session:
+        try:
+            res = run_weekly(session, settings)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("fundamentals failed")
+            session.add(
+                FetchRun(
+                    source="fundamentals",
+                    started_at=started,
+                    finished_at=datetime.utcnow(),
+                    status="failed",
+                    rows=0,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            )
+            session.commit()
+            return {"source": "fundamentals", "status": "failed", "error": str(exc)}
+        session.add(
+            FetchRun(
+                source="fundamentals",
+                started_at=started,
+                finished_at=datetime.utcnow(),
+                status="ok",
+                rows=res["ok"],
+                error=(f"failed: {', '.join(res['failed'][:10])}" if res["failed"] else None),
+            )
+        )
+        session.commit()
+        return {"source": "fundamentals", "status": "ok", **res}
+
+
+def refresh_screener_universe(settings: Settings | None = None) -> dict:
+    """Monthly: constituent lists from Wikipedia plus the current Safra focus list."""
+    from desk.screener import refresh_constituents
+
+    settings = settings or get_settings()
+    init_db(settings)
+    with session_scope(settings) as session:
+        return refresh_constituents(session, settings)
 
 
 def backup_sqlite(settings: Settings | None = None) -> Path:

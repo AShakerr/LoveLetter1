@@ -6,12 +6,13 @@ from pathlib import Path
 import pytest
 from sqlmodel import select
 
-from desk.broker import PaperBroker, RevolutBroker
+from desk.broker.live import AlpacaBroker, IBKRBroker
 from desk.db import session_scope
 from desk.decisions import respond, run_pipeline
+from desk.execution import paper_vs_actual
 from desk.fixtures import load_fixtures
 from desk.ingest.revolut import confirm_batch
-from desk.models import Decision, Instrument, PaperPosition, Position, Regime, RuleFired, Score
+from desk.models import Decision, Instrument, OrderRow, Position, Regime, RuleFired, Score
 from desk.portfolio import build_portfolio
 from desk.predicates import Context, PredicateError, evaluate
 from desk.regime import classify, make_label
@@ -174,11 +175,15 @@ def test_scores(seeded):
         # sector Consumer Discretionary neutral (2.5), region USA most preferred (5), Equities overweight (5)
         assert results[tsla.id].factors["safra"].value == pytest.approx((2.5 + 5 + 5) / 3)
         assert results[nvda.id].factors["safra"].value == 5.0  # focus-list buy overrides
-        assert results[nvda.id].factors["valuation"].inputs["target"]["target"] == 270
-        assert results[vusa.id].factors["valuation"].inputs["target"]["key"] == "S&P 500 Dec-26"
+        assert (
+            results[nvda.id].factors["valuation"].inputs["fundamentals"]["peg"]["score"] == 4.0
+        )  # PEG 1.1
+        assert results[vusa.id].factors["valuation"].inputs["pe"]["series"] == "PE:S&P 500"
         assert (
             results[vusa.id].factors["valuation"].inputs["pe"]["n"] == 3
         )  # three Safra performance tables
+
+        assert sum(results[vusa.id].row.inputs_json["weights"].values()) == 100
         assert results[pot.id].factors["portfolio"].value <= 1.0  # gold already 62%
         assert results[vusa.id].factors["portfolio"].inputs["base"] == 5.0
         assert all(r.factors["season"].value == 0 for r in results.values())  # September
@@ -340,21 +345,11 @@ def test_pipeline_decisions_idempotent_and_paper(seeded):
         again = run_pipeline(s, seeded, TODAY)
         assert again.created == 0
         assert len(s.exec(select(Decision)).all()) == res.created
-        # paper book seeded from the confirmed positions
-        assert PaperBroker().is_seeded(s)
-        rows = {r["ticker"]: r for r in PaperBroker().compare(s, res.view)}
-        actionable = {
-            s.get(Instrument, d.instrument_id).ticker
-            for d in res.decisions
-            if d.action in ("BUY", "ADD", "TRIM", "SELL")
-        }
-        # the paper book only diverges where the system acted (plus cash, which funds the buys)
-        for t, r in rows.items():
-            if t not in actionable and t != "CASH_USD":
-                assert abs(r["diff_eur"]) < 1, (t, r)
-        assert res.paper_fills == len(actionable)
-        for t in actionable:
-            assert abs(rows[t]["diff_eur"]) > 1, t
+        # paper book seeded from the confirmed positions; only mandatory exits were submitted (none today)
+        actual, paper, rows = paper_vs_actual(s, seeded)
+        assert paper.basis == "confirmed" and len(paper.positions) == len(actual.positions)
+        assert all(abs(r["diff_eur"]) < 1 for r in rows)
+        assert res.orders_submitted == 0 and not s.exec(select(OrderRow)).all()
         # a held instrument never gets both a HOLD and an ADD on the same day
         per_inst = {}
         for d in res.decisions:
@@ -376,9 +371,10 @@ def test_execute_sell_and_buy_updates_positions(seeded):
             and next(p.weight for p in res.view.positions if p.instrument.id == tsla.id)
         )
         assert "stop_loss" in sell.reasoning_md and "MANDATORY" in sell.reasoning_md
-        # the paper broker sold it already
-        paper = s.exec(select(PaperPosition).where(PaperPosition.instrument_id == tsla.id)).one()
-        assert paper.quantity == 0
+        # the mandatory SELL was submitted to the paper broker at creation; it fills at the next open
+        order = s.exec(select(OrderRow).where(OrderRow.decision_id == sell.id)).one()
+        assert order.status == "submitted" and order.side == "SELL" and order.broker == "paper"
+        assert order.quantity == pytest.approx(10.26) and order.reference_price is not None
         # user executes: position closes, decision text untouched
         text = sell.reasoning_md
         respond(s, sell, "executed", "sold at 350", seeded)
@@ -425,9 +421,11 @@ def test_execute_sell_and_buy_updates_positions(seeded):
             respond(s, buy, "bogus")
 
 
-def test_revolut_stub():
-    with pytest.raises(NotImplementedError):
-        RevolutBroker().positions(None)
+def test_live_stubs():
+    for b in (IBKRBroker(), AlpacaBroker()):
+        assert b.mode == "live"
+        with pytest.raises(NotImplementedError):
+            b.positions()
 
 
 def test_seed_kill_conditions_loaded(seeded):

@@ -9,7 +9,11 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from desk.config import Settings, get_settings
-from desk.jobs import backup_sqlite, run_daily, scan_inbox
+from desk.jobs import (
+    backup_sqlite,
+    run_daily,
+    scan_inbox,
+)
 
 log = logging.getLogger(__name__)
 
