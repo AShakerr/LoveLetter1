@@ -37,6 +37,8 @@ def sync_instruments(session: Session, items: list[dict] | None = None) -> int:
             sector=it.get("sector"),
             region=it.get("region"),
             source_symbol=it.get("source_symbol"),
+            price_currency=it.get("price_currency"),
+            price_note=it.get("price_note"),
             isin=it.get("isin"),
             stale_after_days=it.get("stale_after_days"),
         )

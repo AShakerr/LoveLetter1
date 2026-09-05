@@ -17,6 +17,7 @@ from datetime import date, timedelta
 from desk.config import REPO_ROOT, get_settings
 from desk.db import init_db, session_scope
 from desk.sources import build_fetchers
+from desk.sources.fred import MIN_LOOKBACK_DAYS, FredFetcher
 from desk.sources.yfinance_source import YFinanceFetcher
 from desk.universe import load_universe
 
@@ -29,7 +30,6 @@ FILES = {
     "gdelt": "gdelt.json",
     "cnn_fear_greed": "fear_greed.json",
     "cftc_cot": "cot.json",
-    "cboe": "cboe.json",
     "aaii": "aaii.json",
     "manual": "manual.json",
 }
@@ -41,6 +41,8 @@ def record_sources(args, settings) -> None:
             continue
         if isinstance(f, YFinanceFetcher):
             f.start = date.today() - timedelta(days=args.days)
+        if isinstance(f, FredFetcher):
+            f.start = date.today() - timedelta(days=max(args.days, MIN_LOOKBACK_DAYS))
         ok, why = f.enabled()
         if not ok:
             print(f"{f.name}: skipped ({why})")

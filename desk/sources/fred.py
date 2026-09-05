@@ -12,6 +12,9 @@ BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 DEFAULT_SERIES = ["DFF", "DGS2", "DGS10", "DGS30", "CPIAUCSL", "CPILFESL", "T10Y2Y", "UNRATE"]
 
 
+MIN_LOOKBACK_DAYS = 480
+
+
 class FredFetcher(Fetcher):
     name = SOURCE
 
@@ -20,7 +23,9 @@ class FredFetcher(Fetcher):
     ) -> None:
         super().__init__(settings)
         self.series = series or DEFAULT_SERIES
-        self.start = start or (date.today() - timedelta(days=self.settings.price_lookback_days))
+        # CPI y/y needs 13 monthly prints, so the window is at least MIN_LOOKBACK_DAYS whatever the price lookback
+        days = max(self.settings.price_lookback_days, MIN_LOOKBACK_DAYS)
+        self.start = start or (date.today() - timedelta(days=days))
 
     def enabled(self) -> tuple[bool, str | None]:
         if not self.settings.fred_api_key:

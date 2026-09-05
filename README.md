@@ -138,9 +138,13 @@ page updates the confirmed positions; the decision text is never edited.
 - Weights are 25/20/15/15/10/10/5 (Safra, regime, portfolio, valuation, momentum, crowd, seasonality).
   Momentum is pure 3-month price percentile; news sentiment is recorded and used by momentum_break only.
 - Crowd (7b, `desk/crowd.py`): positioning as a percentile of its 3-year range (CFTC COT for gold, crude,
-  copper, EUR, 10y and S&P e-mini; CBOE total put/call; AAII bull-bear spread; the last two also have manual
-  fallbacks in `config/manual_observations.yaml`), contrarian at the extremes, ±1 for the last relevant
-  surprise from `config/events.yaml`. A Safra target within 2% of `CONSENSUS_TARGET:<key>` caps Safra
+  copper, EUR, 10y and S&P e-mini; for equities an equal-weight composite of CNN's 5-day put/call ratio
+  (`CNN_PUTCALL_5D`, from the Fear & Greed payload: cdn.cboe.com answers 403), the AAII bull-bear spread and
+  the VIX term structure `^VIX/^VIX3M` derived from the two price series), contrarian at the extremes, ±1 for
+  the last relevant surprise from `config/events.yaml`. A signal is excluded from the composite when its
+  latest reading is older than 45 days or it has fewer than 8 points; AAII needs 52 weekly readings
+  (the public page yields one per week; `desk aaii-backfill sentiment.xls` imports the member spreadsheet).
+  Ranges shorter than two years are noted on the score inputs. A Safra target within 2% of `CONSENSUS_TARGET:<key>` caps Safra
   alignment at 4/5. A BUY/ADD with an event within 2 trading days and positioning above 80 or below 20 is
   created `deferred`.
 - Valuation (7c, `desk/valuation.py`): stocks average PEG, forward P/E z-score vs the sector median, and

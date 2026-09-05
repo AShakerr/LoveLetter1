@@ -6,7 +6,6 @@ from desk.config import Settings, get_settings
 from desk.sources.aaii import AaiiFetcher
 from desk.sources.alphavantage import AlphaVantageFetcher
 from desk.sources.base import Fetcher, FetchOutcome, Observation
-from desk.sources.cboe import CboeFetcher
 from desk.sources.cot import CotFetcher
 from desk.sources.ecb import EcbFetcher
 from desk.sources.fear_greed import FearGreedFetcher
@@ -15,13 +14,20 @@ from desk.sources.gdelt import GdeltFetcher
 from desk.sources.manual import ManualFetcher
 from desk.sources.yfinance_source import YFinanceFetcher
 
-__all__ = ["Fetcher", "FetchOutcome", "Observation", "build_fetchers"]
+__all__ = ["Fetcher", "FetchOutcome", "Observation", "build_fetchers", "price_symbols"]
+
+
+def price_symbols(item: dict) -> str | list[str]:
+    """yfinance symbol for a universe entry: `source_symbol`, then `source_symbol_fallbacks` tried in order."""
+    primary = item.get("source_symbol") or item["ticker"]
+    fallbacks = item.get("source_symbol_fallbacks") or []
+    return [primary, *fallbacks] if fallbacks else primary
 
 
 def build_fetchers(universe: list[dict], settings: Settings | None = None) -> list[Fetcher]:
     settings = settings or get_settings()
     symbols = {
-        i["ticker"]: i.get("source_symbol") or i["ticker"]
+        i["ticker"]: price_symbols(i)
         for i in universe
         if i.get("price_source", "yfinance") == "yfinance"
     }
@@ -34,7 +40,6 @@ def build_fetchers(universe: list[dict], settings: Settings | None = None) -> li
         GdeltFetcher(settings=settings),
         FearGreedFetcher(settings=settings),
         CotFetcher(settings=settings),
-        CboeFetcher(settings=settings),
         AaiiFetcher(settings=settings),
         ManualFetcher(settings=settings),
     ]

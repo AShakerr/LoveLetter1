@@ -115,6 +115,22 @@ def decide(verbose: bool = False) -> None:
     typer.echo(json.dumps(run_decisions(get_settings()), indent=1, default=str))
 
 
+@app.command("aaii-backfill")
+def aaii_backfill_cmd(path: str, verbose: bool = False) -> None:
+    """Import the AAII historical spreadsheet (member download) or a CSV with Date/Bullish/Neutral/Bearish."""
+    from desk.db import init_db, session_scope
+    from desk.persist import persist_observations
+    from desk.sources.aaii import backfill
+
+    _log(verbose)
+    settings = get_settings()
+    init_db(settings)
+    obs = backfill(Path(path))
+    with session_scope(settings) as session:
+        counts = persist_observations(session, obs)
+    typer.echo(f"AAII backfill: {len(obs)} weekly readings parsed; {dict(counts)}")
+
+
 @app.command("kill-conditions")
 def kill_conditions_cmd() -> None:
     """Attach docs/seed/kill_conditions_*.yaml to open positions."""

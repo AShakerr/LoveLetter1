@@ -10,7 +10,7 @@ from typing import Any
 from sqlmodel import Session, select
 
 from desk.events import last_with_actual, surprise_direction, upcoming
-from desk.models import Instrument, InstrumentKind, NewsSentiment, Observation
+from desk.models import Instrument, InstrumentKind, NewsSentiment, Observation, Price
 
 # series -> sign: +1 means a high value = crowd long; -1 means a high value = crowd short (put/call)
 COT = {
@@ -20,7 +20,19 @@ COT = {
     "fx_eur": "COT:EUR",
     "rates": "COT:TNOTE10",
 }
-EQUITY_SIGNALS = [("CBOE_PUTCALL_TOTAL", -1), ("AAII_BULL_BEAR_SPREAD", +1), ("COT:SP500", +1)]
+# Equity positioning composite. CBOE's totalpc.csv answers 403, so put/call comes from CNN's Fear & Greed
+# component (5-day average of the CBOE total put/call ratio, ~1 year of daily points). VIX term structure
+# (^VIX / ^VIX3M; above 1 = backwardation = hedging demand/stress) is computed from the two price series.
+EQUITY_SIGNALS = [
+    ("CNN_PUTCALL_5D", -1),
+    ("AAII_BULL_BEAR_SPREAD", +1),
+    ("COT:SP500", +1),
+    ("VIX_TERM_RATIO", -1),
+]
+VIX_TERM_SERIES = "VIX_TERM_RATIO"
+AAII_MIN_WEEKS = 52  # AAII is unavailable to the composite until a year of weekly readings exists
+MIN_OBSERVATIONS = {"AAII_BULL_BEAR_SPREAD": AAII_MIN_WEEKS}
+MAX_AGE_DAYS = 45  # a positioning reading older than this is not "current" positioning
 DISCLAIMER = (
     "Crowd measures what the crowd has already done and what it already expects; it does not predict "
     "what the crowd will do."
@@ -40,6 +52,8 @@ def range_percentile(
 ) -> tuple[float | None, dict[str, Any]]:
     """Latest value's position within the min-max range of the last `years`, 0-100."""
     today = today or dt.date.today()
+    if series == VIX_TERM_SERIES:
+        return vix_term_percentile(session, years, today)
     rows = session.exec(
         select(Observation)
         .where(
@@ -49,28 +63,85 @@ def range_percentile(
         )
         .order_by(Observation.date)
     ).all()
-    if len(rows) < 8:
-        return None, {"series": series, "note": f"{len(rows)} observations; need at least 8"}
-    vals = [r.value for r in rows]
+    return _percentile_of([(r.value, r.date) for r in rows], series, today)
+
+
+def _percentile_of(
+    points: list[tuple[float, dt.date]], series: str, today: dt.date
+) -> tuple[float | None, dict[str, Any]]:
+    need = MIN_OBSERVATIONS.get(series, 8)
+    if len(points) < need:
+        return None, {
+            "series": series,
+            "n": len(points),
+            "note": f"{len(points)} observations; need at least {need}; excluded",
+        }
+    vals = [v for v, _ in points]
     lo, hi = min(vals), max(vals)
-    last = rows[-1]
+    last_value, last_date = points[-1]
+    age = (today - last_date).days
+    if age > MAX_AGE_DAYS:
+        return None, {
+            "series": series,
+            "latest": last_value,
+            "as_of": last_date.isoformat(),
+            "n": len(points),
+            "note": f"latest reading is {age} days old (limit {MAX_AGE_DAYS}); excluded",
+        }
     if hi == lo:
         return 50.0, {
             "series": series,
-            "latest": last.value,
-            "as_of": last.date.isoformat(),
+            "latest": last_value,
+            "as_of": last_date.isoformat(),
             "note": "flat range",
         }
-    p = (last.value - lo) / (hi - lo) * 100
-    return p, {
+    p = (last_value - lo) / (hi - lo) * 100
+    span_days = (last_date - points[0][1]).days
+    info = {
         "series": series,
-        "latest": last.value,
-        "as_of": last.date.isoformat(),
+        "latest": last_value,
+        "as_of": last_date.isoformat(),
         "min": lo,
         "max": hi,
         "n": len(vals),
+        "since": points[0][1].isoformat(),
         "percentile": round(p, 1),
     }
+    if span_days < 365 * 2:
+        info["note"] = f"range covers {span_days} days, not 3 years"
+    return p, info
+
+
+def vix_term_percentile(
+    session: Session, years: int = 3, today: dt.date | None = None
+) -> tuple[float | None, dict[str, Any]]:
+    """^VIX / ^VIX3M close ratio on the days both exist, as a percentile of its range. Derived from the two
+    instruments' rows in the prices table, so every input is a stored row."""
+    today = today or dt.date.today()
+    since = today - dt.timedelta(days=365 * years)
+
+    def closes(sym: str) -> dict[dt.date, float]:
+        inst = session.exec(select(Instrument).where(Instrument.ticker == sym)).first()
+        if inst is None:
+            return {}
+        rows = session.exec(
+            select(Price).where(
+                Price.instrument_id == inst.id, Price.date >= since, Price.date <= today
+            )
+        ).all()
+        return {r.date: r.close for r in rows}
+
+    vix, vix3m = closes("^VIX"), closes("^VIX3M")
+    points = sorted(
+        ((vix[d] / vix3m[d], d) for d in vix.keys() & vix3m.keys() if vix3m[d]), key=lambda t: t[1]
+    )
+    p, info = _percentile_of(points, VIX_TERM_SERIES, today)
+    info["derived_from"] = ["prices:^VIX", "prices:^VIX3M"]
+    info["meaning"] = "ratio above 1 = backwardation = hedging demand; low ratio = complacency"
+    if points:
+        d = points[-1][1]
+        info["vix"], info["vix3m"] = vix[d], vix3m[d]
+    return p, info
 
 
 def crowd_long_percentile(
@@ -90,14 +161,22 @@ def crowd_long_percentile(
     if inst.kind == InstrumentKind.crypto:
         return None, {"note": "no free positioning series for crypto"}
     parts = []
+    used = []
     for series, sign in EQUITY_SIGNALS:
         p, i = range_percentile(session, series, today=today)
+        i["sign"] = sign
         inputs[series] = i
         if p is not None:
             parts.append(p if sign > 0 else 100 - p)
+            used.append(series)
     if not parts:
         return None, inputs
     inputs["composite"] = round(sum(parts) / len(parts), 1)
+    inputs["composite_of"] = used
+    inputs["composite_note"] = (
+        "equal-weight mean of the available equity positioning signals, each oriented so 100 = crowd long; "
+        "put/call is CNN's 5-day average (CBOE CSV unavailable), VIX term structure = ^VIX/^VIX3M"
+    )
     return sum(parts) / len(parts), inputs
 
 

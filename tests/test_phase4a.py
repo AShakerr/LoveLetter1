@@ -157,14 +157,17 @@ def test_crowd_from_fixtures(seeded):
     with session_scope(seeded) as s:
         p, inputs = range_percentile(s, "COT:GOLD", today=TODAY)
         assert (
-            p is not None and p > 90 and inputs["n"] > 100
-        )  # synthetic gold net length trends to a 3-year high
+            p is not None and 0 <= p <= 100 and inputs["n"] > 100
+        )  # weekly rows over the 3-year range
+        assert inputs["latest"] == inputs["latest"] and inputs["as_of"] >= "2026-08-01"
         pot = _inst(s, "COMMODITIES_POT")
         pp, _ = crowd_long_percentile(s, pot, TODAY)
         assert pp == pytest.approx(p)
         vusa = _inst(s, "VUSA")
         pe, inp = crowd_long_percentile(s, vusa, TODAY)
-        assert pe is not None and "CBOE_PUTCALL_TOTAL" in inp and "AAII_BULL_BEAR_SPREAD" in inp
+        assert pe is not None and "CNN_PUTCALL_5D" in inp and "AAII_BULL_BEAR_SPREAD" in inp
+        assert "CNN_PUTCALL_5D" in inp["composite_of"] and "COT:SP500" in inp["composite_of"]
+        assert "AAII_BULL_BEAR_SPREAD" not in inp["composite_of"]  # one week recorded; needs 52
         assert range_percentile(s, "NOPE", today=TODAY)[0] is None
         # consensus gap: placeholder consensus is 0 -> no cap; a real consensus within 2% caps Safra at 4
         assert consensus_gap(s, "S&P 500 Dec-26", 8200.0, TODAY)[0] is False

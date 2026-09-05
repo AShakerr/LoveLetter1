@@ -14,6 +14,7 @@ from desk.portfolio import build_portfolio
 from desk.seed import load_all_seeds
 from desk.universe import sync_instruments
 from desk.web.app import create_app
+from tests.conftest import load_fixture
 
 
 @pytest.fixture
@@ -80,8 +81,9 @@ def test_portfolio_valuation_and_limits(settings, seeded):
         assert abs(sum(p.weight for p in view.positions) - 1) < 1e-9
         bars = {b.label: b for b in view.limits}
         assert by_ticker["WHOOP"].value_native == pytest.approx(25735.0)
+        ora_close = load_fixture("yfinance.json")["ORA"][-1]["close"]
         assert (
-            by_ticker["ORA"].value_native == pytest.approx(342 * 15.97)
+            by_ticker["ORA"].value_native == pytest.approx(342 * ora_close)
             and by_ticker["ORA"].position.avg_cost == 14.01
         )
         assert by_ticker["WHOOP"].stale_after_days == 90 and not by_ticker["WHOOP"].is_stale

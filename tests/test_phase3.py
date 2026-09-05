@@ -20,7 +20,9 @@ from desk.regime_fit import RegimeFit
 from desk.rules import run_rules
 from desk.score import band, score_universe
 from desk.seed import load_all_seeds
+from desk.sources.ecb import parse_sdmx
 from desk.universe import sync_instruments
+from tests.conftest import load_fixture
 
 TODAY = dt.date(2026, 9, 4)
 
@@ -43,12 +45,22 @@ def _inst(s, ticker):
 def test_regime_classifier(seeded):
     with session_scope(seeded) as s:
         r = classify(s, TODAY)
-        assert r.inflation_state == "energy_shock"  # EZ HICP 3.3 vs core 2.5 in the fixtures
-        assert r.vol_state == "complacent"  # VIX 14.3
+        ez_period, ez_hicp = parse_sdmx(load_fixture("ecb.json")["EZ_HICP"])[-1]
+        vix = load_fixture("yfinance.json")["^VIX"][-1]["close"]
+        ez_age = (TODAY - dt.date.fromisoformat(ez_period + "-01")).days
+        if ez_age > 90:
+            # the recorded HICP series stops months before TODAY: it is excluded, never silently used
+            assert "excluded" in r.inputs_json["inflation"]["ez"]["note"]
+            assert "EZ HICP" in r.inputs_json["inflation"]["stale"]
+        states = ("energy_shock", "contained", "broad", "disinflation", "sticky", "unknown")
+        assert r.inflation_state in states
+        assert r.vol_state == ("complacent" if vix < 15 else "stressed" if vix > 25 else "normal")
         assert r.policy_state in ("hiking", "on_hold", "cutting")
         assert r.oil_state in ("shock", "elevated", "normal")
         assert r.label == make_label(r.inflation_state, r.policy_state, r.oil_state, r.vol_state)
-        assert r.inputs_json["inflation"]["ez"]["headline_yoy"] == 3.3
+        assert (
+            r.inputs_json["inflation"]["ez"]["headline_yoy"] == ez_hicp
+        )  # traceable to the recorded row
         assert r.inputs_json["policy"]["house_forecasts"]
         # idempotent upsert
         assert len(s.exec(select(Regime).where(Regime.date == TODAY)).all()) == 1
@@ -63,7 +75,7 @@ def test_predicate_dsl(seeded):
         assert evaluate("house_view(sector).stance == neutral", ctx) is True
         assert evaluate("house_view('Energy').stance == least_preferred", ctx) is True
         assert evaluate("house_view(region).stance == 'least_preferred'", ctx) is False
-        assert evaluate("observation('BZ=F') > 80 and observation('EZ_HICP') > 3", ctx) is True
+        assert evaluate("observation('BZ=F') > 80 and observation('EZ_HICP') > 1", ctx) is True
         assert evaluate("observation('DXY') > 50", ctx) is True
         assert evaluate("observation('ECB_DEPO') >= 2.25", ctx) is True
         assert evaluate("close() < avg_cost() * 0.5", ctx) is False

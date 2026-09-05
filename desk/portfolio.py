@@ -58,6 +58,7 @@ class PositionView:
     value_eur: float | None
     weight: float = 0.0
     pnl_pct: float | None = None
+    price_note: str | None = None  # e.g. "priced via AUEM.PA (USD) converted at EURUSD"
 
     @property
     def theme(self) -> str:
@@ -176,7 +177,12 @@ def build_portfolio(
     if not rows:
         return view
     instruments = {i.id: i for i in session.exec(select(Instrument)).all()}
-    view.fx = fx_rates(session, {r.currency for r in rows})
+    quote_ccys = {
+        instruments[r.instrument_id].price_currency
+        for r in rows
+        if instruments[r.instrument_id].price_currency
+    }
+    view.fx = fx_rates(session, {r.currency for r in rows} | quote_ccys)
     for r in rows:
         inst = instruments[r.instrument_id]
         px = (
@@ -184,8 +190,22 @@ def build_portfolio(
             if inst.kind not in (InstrumentKind.cash, InstrumentKind.other)
             else None
         )
+        note = inst.price_note
         if px is not None:
             price, as_of, src = px.close, px.date, px.source
+            if inst.price_currency and inst.price_currency != r.currency:
+                # the source quotes in another currency: convert at the day's rates (both per EUR)
+                q = view.fx.get(inst.price_currency)
+                t = view.fx.get(r.currency)
+                if q and q.per_eur and t and t.per_eur:
+                    price = price / q.per_eur * t.per_eur
+                    src = f"{src} ({inst.price_currency}->{r.currency} at {q.per_eur:.4f})"
+                else:
+                    view.warnings.append(
+                        f"No FX rate to convert {inst.ticker} from {inst.price_currency} to {r.currency};"
+                        " price left unconverted"
+                    )
+                    note = f"UNCONVERTED {inst.price_currency} quote. " + (note or "")
         else:
             price, as_of, src = r.last_price, r.as_of, r.source
         if inst.kind == InstrumentKind.cash:
@@ -207,7 +227,9 @@ def build_portfolio(
             pnl = (price / r.avg_cost - 1) * 100
         elif r.return_pct is not None:
             pnl = r.return_pct
-        view.positions.append(PositionView(r, inst, price, as_of, src, native, eur, pnl_pct=pnl))
+        view.positions.append(
+            PositionView(r, inst, price, as_of, src, native, eur, pnl_pct=pnl, price_note=note)
+        )
     view.total_eur = sum(p.value_eur or 0 for p in view.positions)
     if view.total_eur > 0:
         for p in view.positions:

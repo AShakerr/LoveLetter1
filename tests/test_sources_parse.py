@@ -98,8 +98,8 @@ def test_gdelt_parse_joins_tone_and_volume(settings):
 def test_fear_greed_parse(settings):
     raw = load_fixture("fear_greed.json")
     obs = FearGreedFetcher(settings=settings).parse(raw)
-    assert obs and all(o.series == "CNN_FEAR_GREED" for o in obs)
-    latest = max(obs, key=lambda o: o.date)
+    assert obs and {o.series for o in obs} == {"CNN_FEAR_GREED", "CNN_PUTCALL_5D"}
+    latest = max((o for o in obs if o.series == "CNN_FEAR_GREED"), key=lambda o: o.date)
     assert latest.value == raw["fear_and_greed"]["score"]
     assert latest.meta["rating"] == raw["fear_and_greed"]["rating"]
 
@@ -107,5 +107,14 @@ def test_fear_greed_parse(settings):
 def test_manual_parse(settings):
     raw = load_fixture("manual.json")
     obs = ManualFetcher(settings=settings).parse(raw)
-    assert {o.series for o in obs} == {"EGX30", "CBE_DEPOSIT_RATE"}
-    assert all(o.source == "manual" for o in obs)
+    assert (
+        obs == []
+    )  # every recorded row is still a PLACEHOLDER; placeholders never become observations
+    real = ManualFetcher(settings=settings).parse(
+        {
+            "observations": [
+                {"series": "EGX30", "value": 31250.5, "as_of": "2026-09-03", "note": "egx"}
+            ]
+        }
+    )
+    assert [(o.series, o.value, o.source) for o in real] == [("EGX30", 31250.5, "manual")]

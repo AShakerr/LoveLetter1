@@ -1,6 +1,7 @@
 # Hand-maintained series with no reliable free API (Egypt). Edit values and as_of dates by hand.
 # The dashboard paints a series red once as_of is older than 14 days.
-# PLACEHOLDER values: replace with real readings before relying on them.
+# Rows whose note contains PLACEHOLDER are skipped by the fetcher (a placeholder zero is not an observation);
+# replace value, as_of and the note with a real reading to activate them.
 observations:
   - series: EGX30
     label: EGX30 index
@@ -14,13 +15,7 @@ observations:
     as_of: 2026-08-15
     unit: "%"
     note: "PLACEHOLDER — update from cbe.org.eg"
-  # Crowd factor fallbacks (docs/BRIEF.md 7b). The aaii fetcher overwrites AAII when it can reach the site.
-  - series: AAII_BULL_BEAR_SPREAD
-    label: AAII bull-bear spread
-    value: 0
-    as_of: 2026-08-15
-    unit: pp
-    note: "PLACEHOLDER — weekly from aaii.com/sentimentsurvey"
+  # AAII_BULL_BEAR_SPREAD comes from the aaii fetcher (one week per pull) or `desk aaii-backfill`; not a manual series.
   # Median of published sell-side strategist year-end targets; compared with the Safra target (consensus gap).
   - series: "CONSENSUS_TARGET:S&P 500 Dec-26"
     label: Street consensus S&P 500 Dec-26

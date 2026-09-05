@@ -80,9 +80,15 @@ def _yoy(session: Session, series: str) -> tuple[float | None, dt.date | None]:
     return (cur.value / prev.value - 1) * 100, cur.date
 
 
-def classify_inflation(session: Session) -> Dimension:
+INFLATION_MAX_AGE_DAYS = (
+    90  # a monthly print dated more than ~3 months ago is not the current regime
+)
+
+
+def classify_inflation(session: Session, today: dt.date | None = None) -> Dimension:
     inputs: dict[str, Any] = {"rule": INFLATION_RULE}
-    gaps, cores = [], []
+    today = today or dt.date.today()
+    gaps, cores, stale = [], [], []
     us_h, us_d = _yoy(session, "CPIAUCSL")
     us_c, _ = _yoy(session, "CPILFESL")
     if us_h is not None and us_c is not None:
@@ -91,8 +97,12 @@ def classify_inflation(session: Session) -> Dimension:
             "core_yoy": round(us_c, 2),
             "as_of": us_d.isoformat(),
         }
-        gaps.append(us_h - us_c)
-        cores.append(us_c)
+        if (today - us_d).days > INFLATION_MAX_AGE_DAYS:
+            inputs["us"]["note"] = f"{(today - us_d).days} days old; excluded"
+            stale.append("US CPI")
+        else:
+            gaps.append(us_h - us_c)
+            cores.append(us_c)
     else:
         inputs["us"] = "CPI y/y needs 13 months of CPIAUCSL/CPILFESL observations"
     ez_h, ez_c = latest_obs(session, "EZ_HICP"), latest_obs(session, "EZ_HICP_CORE")
@@ -103,10 +113,16 @@ def classify_inflation(session: Session) -> Dimension:
             "as_of": ez_h.date.isoformat(),
             "source": ez_h.source,
         }
-        gaps.append(ez_h.value - ez_c.value)
-        cores.append(ez_c.value)
+        if (today - ez_h.date).days > INFLATION_MAX_AGE_DAYS:
+            inputs["ez"]["note"] = f"{(today - ez_h.date).days} days old; excluded"
+            stale.append("EZ HICP")
+        else:
+            gaps.append(ez_h.value - ez_c.value)
+            cores.append(ez_c.value)
+    if stale:
+        inputs["stale"] = stale
     if not gaps:
-        return Dimension("unknown", {**inputs, "note": "no inflation data"})
+        return Dimension("unknown", {**inputs, "note": "no current inflation data"})
     gap, core = max(gaps), max(cores)
     inputs.update({"headline_minus_core": round(gap, 2), "core": round(core, 2)})
     if gap > 0.75:
@@ -250,7 +266,7 @@ def classify(session: Session, on: dt.date | None = None) -> Regime:
     """Classify and upsert today's regime row. Returns the row."""
     on = on or dt.date.today()
     infl, pol, oil, vol = (
-        classify_inflation(session),
+        classify_inflation(session, on),
         classify_policy(session),
         classify_oil(session),
         classify_vol(session),

@@ -15,10 +15,13 @@ instruments:
   - {ticker: VUSA, name: Vanguard S&P 500 UCITS ETF Dist, isin: IE00B3XXRP09, kind: etf, currency: EUR,
      exchange: Xetra, tradable: true, theme: us_broad, sector: Broad, region: USA,
      source_symbol: VUSA.DE, valuation: {target_key: "S&P 500 Dec-26", index_ticker: "^GSPC", pe_series: "PE:S&P 500"}}
-  # Identifiers from docs/seed/positions_2026-09-04.json. X9I1's ISIN still needs confirming in Revolut.
+  # Identifiers from docs/seed/positions_2026-09-04.json. Yahoo has no Xetra line for LU1681045453 (X9I1.DE ->
+  # "Quote not found"); the USD Acc class trades on Euronext Paris as AUEM.PA (USD) and on the LSE as AUEM.L (USD).
+  # AMEM.DE is the EUR Acc class (LU1681045370) with a different NAV level, so it is not used for the price.
   - {ticker: X9I1, name: Amundi MSCI Emerging Markets Swap UCITS ETF USD Acc, isin: LU1681045453, kind: etf,
      currency: EUR, exchange: Xetra, tradable: true, theme: em_broad, sector: Broad,
-     region: Emerging Markets, source_symbol: X9I1.DE,
+     region: Emerging Markets, source_symbol: AUEM.PA, source_symbol_fallbacks: [AUEM.L], price_currency: USD,
+     price_note: "priced via AUEM.PA (Euronext Paris, USD; fallback AUEM.L), converted to EUR at EURUSD; no Xetra quote on Yahoo for LU1681045453",
      valuation: {target_key: "MSCI EM Dec-26", pe_series: "PE:MSCI Emerging Markets"}}
   - {ticker: 4COP, name: Global X Copper Miners UCITS ETF USD Acc, isin: IE0003Z9E2Y3, kind: etf, currency: EUR,
      exchange: Xetra, tradable: true, theme: materials_copper, sector: Materials, region: Global,

@@ -42,6 +42,11 @@ class Instrument(SQLModel, table=True):
     region: str | None = None
     # symbol used at the data source when it differs from the display ticker (e.g. VUSA -> VUSA.AS)
     source_symbol: str | None = None
+    # currency the price source quotes in when it differs from `currency` (e.g. a USD listing of a EUR holding);
+    # the portfolio converts at the day's FX rate. None = same as `currency`.
+    price_currency: str | None = None
+    # shown on the Portfolio row: why this instrument is priced the way it is (proxy, foreign listing...)
+    price_note: str | None = None
     isin: str | None = None
     # None for ordinary instruments. False for pots whose composition the user has not confirmed yet:
     # while False, max_position / max_theme raise a REVIEW flag instead of a MANDATORY TRIM.

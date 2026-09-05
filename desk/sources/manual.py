@@ -1,6 +1,7 @@
 """Hand-maintained observations (Egypt: EGX30, CBE rate...) from config/manual_observations.yaml.
 
-The dashboard paints these red when the as-of date is older than 14 days.
+The dashboard paints these red when the as-of date is older than 14 days. Rows whose note contains
+PLACEHOLDER are skipped: a placeholder zero is not an observation and must never enter a series.
 """
 
 from __future__ import annotations
@@ -33,6 +34,8 @@ class ManualFetcher(Fetcher):
         fetched = utcnow()
         obs: list[Observation] = []
         for item in raw.get("observations") or []:
+            if "PLACEHOLDER" in str(item.get("note") or "").upper():
+                continue
             as_of = item["as_of"]
             d = as_of if isinstance(as_of, date) else date.fromisoformat(str(as_of))
             obs.append(

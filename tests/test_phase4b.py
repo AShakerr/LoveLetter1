@@ -104,7 +104,7 @@ def test_sentiment_adjuster(seeded):
 
 def test_outcomes_hit_rates_and_attribution(seeded):
     with session_scope(seeded) as s:
-        vusa, tsla, x9 = _inst(s, "VUSA"), _inst(s, "TSLA"), _inst(s, "X9I1")
+        vusa, tsla, x9 = _inst(s, "VUSA"), _inst(s, "TSLA"), _inst(s, "NVDA")
         early = dt.date(2026, 7, 20)
         sc = Score(
             instrument_id=vusa.id,

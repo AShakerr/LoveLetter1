@@ -16,7 +16,6 @@ from desk.persist import persist_observations, record_run
 from desk.sources.aaii import AaiiFetcher
 from desk.sources.alphavantage import AlphaVantageFetcher
 from desk.sources.base import Fetcher, FetchOutcome, utcnow
-from desk.sources.cboe import CboeFetcher
 from desk.sources.cot import CotFetcher
 from desk.sources.ecb import EcbFetcher
 from desk.sources.fear_greed import FearGreedFetcher
@@ -38,7 +37,6 @@ def fixture_fetchers(settings: Settings) -> list[tuple[Fetcher, str]]:
         (GdeltFetcher(settings=settings), "gdelt.json"),
         (FearGreedFetcher(settings=settings), "fear_greed.json"),
         (CotFetcher(settings=settings), "cot.json"),
-        (CboeFetcher(settings=settings), "cboe.json"),
         (AaiiFetcher(settings=settings), "aaii.json"),
         (ManualFetcher(settings=settings), "manual.json"),
     ]

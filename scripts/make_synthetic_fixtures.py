@@ -434,18 +434,6 @@ def cot() -> dict:
     return out
 
 
-def cboe() -> dict:
-    days = [END - timedelta(days=i) for i in range(400)][::-1]
-    lines = ["Cboe daily market statistics", "DATE,CALL,PUT,TOTAL,P/C Ratio"]
-    v = 0.9
-    for d in days:
-        if d.weekday() >= 5:
-            continue
-        v = min(1.6, max(0.5, v + rng.gauss(0, 0.04)))
-        lines.append(f"{d.isoformat()},1000000,{int(1000000 * v)},{int(1000000 * (1 + v))},{v:.2f}")
-    return {"csv": "\n".join(lines)}
-
-
 def aaii() -> dict:
     html = (
         "<html><body><h2>AAII Investor Sentiment Survey</h2><p>Week ending September 3, 2026</p>"
@@ -467,7 +455,6 @@ def main() -> None:
         "manual": manual,
         "fundamentals": fundamentals,
         "cot": cot,
-        "cboe": cboe,
         "aaii": aaii,
     }.items():
         path = OUT / f"{name}.json"

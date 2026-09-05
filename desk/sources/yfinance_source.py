@@ -50,31 +50,55 @@ def frame_to_records(df) -> list[dict[str, Any]]:
 class YFinanceFetcher(Fetcher):
     name = SOURCE
 
-    def __init__(self, symbols: dict[str, str], settings=None, start: date | None = None) -> None:
-        """`symbols` maps display ticker -> yfinance symbol. `start` bounds the history window."""
+    def __init__(
+        self,
+        symbols: dict[str, str | list[str]],
+        settings=None,
+        start: date | None = None,
+    ) -> None:
+        """`symbols` maps display ticker -> yfinance symbol, or a list of candidate symbols tried in order
+        (the first one with a non-empty history wins; `_symbols` in the payload records which).
+        `start` bounds the history window."""
         super().__init__(settings)
         self.symbols = symbols
         self.start = start or (date.today() - timedelta(days=self.settings.price_lookback_days))
 
-    def _raw(self) -> dict[str, list[dict[str, Any]]]:
+    def _history(self, symbol: str) -> list[dict[str, Any]]:
         import yfinance as yf
 
+        df = yf.Ticker(symbol).history(
+            start=self.start.isoformat(), interval="1d", auto_adjust=False, actions=False
+        )
+        return frame_to_records(df)
+
+    def _raw(self) -> dict[str, list[dict[str, Any]]]:
         raw: dict[str, list[dict[str, Any]]] = {}
+        used: dict[str, str] = {}
         errors: list[str] = []
-        for ticker, symbol in self.symbols.items():
-            try:
-                df = yf.Ticker(symbol).history(
-                    start=self.start.isoformat(), interval="1d", auto_adjust=False, actions=False
-                )
-                raw[ticker] = frame_to_records(df)
-                if not raw[ticker]:
-                    errors.append(f"{ticker} ({symbol}): empty history")
-            except Exception as exc:  # noqa: BLE001 - one bad symbol must not kill the batch
-                errors.append(f"{ticker} ({symbol}): {exc}")
+        for ticker, spec in self.symbols.items():
+            candidates = [spec] if isinstance(spec, str) else list(spec)
+            raw[ticker] = []
+            tried: list[str] = []
+            for symbol in candidates:
+                try:
+                    records = self._history(symbol)
+                except Exception as exc:  # noqa: BLE001 - one bad symbol must not kill the batch
+                    tried.append(f"{symbol}: {exc}")
+                    continue
+                if records:
+                    raw[ticker] = records
+                    if symbol != candidates[0]:
+                        used[ticker] = symbol
+                    break
+                tried.append(f"{symbol}: empty history")
+            if not raw[ticker]:
+                errors.append(f"{ticker} ({'; '.join(tried)})")
         if not raw or all(len(v) == 0 for v in raw.values()):
             raise RuntimeError("yfinance returned no data: " + "; ".join(errors[:5]))
         if errors:
             raw["_errors"] = errors  # type: ignore[assignment]
+        if used:
+            raw["_symbols"] = used  # type: ignore[assignment]  # fallback symbols that were used
         return raw
 
     def parse(self, raw: dict[str, Any]) -> list[Observation]:
