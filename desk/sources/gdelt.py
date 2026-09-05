@@ -29,8 +29,9 @@ DEFAULT_QUERIES = [
     "Egypt IMF",
     "SpaceX",
 ]
-REQUEST_DELAY_S = 1.5  # pause between consecutive requests
-BACKOFF_S = (2.0, 4.0, 8.0)  # waits after the 1st, 2nd, 3rd failed attempt of one request
+# pause between consecutive requests; a 14-day timeline call itself takes ~10s on GDELT's side
+REQUEST_DELAY_S = 4.0
+BACKOFF_S = (5.0, 10.0, 20.0)  # waits after the 1st, 2nd, 3rd failed attempt of one request
 
 
 def _timeline(payload: dict[str, Any]) -> dict[date, float]:

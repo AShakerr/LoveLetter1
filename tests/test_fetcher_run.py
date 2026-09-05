@@ -79,7 +79,10 @@ def test_alphavantage_budget(settings, tmp_path: Path, monkeypatch):
         "desk.sources.alphavantage.http_get_json",
         lambda url, params=None, **kw: (calls.append(params["tickers"]), {"feed": []})[1],
     )
-    with pytest.raises(RuntimeError, match="budget"):
-        f._raw()
+    f._sleep = lambda s: None
+    raw = f._raw()  # the two keys within budget are kept; the third is recorded, not fatal
     assert calls == ["TSLA", "NVDA"] and budget.remaining() == 0
+    assert set(raw["tickers"]) == {"TSLA", "NVDA"} and raw["_errors"] == [
+        "AAPL: daily budget exhausted"
+    ]
     assert f.enabled() == (False, "daily call budget exhausted")

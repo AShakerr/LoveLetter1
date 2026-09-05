@@ -105,11 +105,24 @@ class ScreenerConfig:
 
 
 # ------------------------------------------------------------------------------------- constituents
-def fetch_wikipedia_constituents(source: str) -> list[dict[str, Any]]:
-    """[{ticker, name, sector, exchange, region, currency, source_symbol}] from the Wikipedia table (network)."""
+WIKI_USER_AGENT = "desk/0.1 (private investment-desk tool; python-httpx) constituent refresh"
+
+
+def _read_html_tables(url: str):
+    """Wikipedia answers 403 to urllib's default agent, which is what pandas.read_html(url) uses."""
+    from io import StringIO
+
+    import httpx
     import pandas as pd
 
-    tables = pd.read_html(WIKI[source])
+    r = httpx.get(url, headers={"User-Agent": WIKI_USER_AGENT}, timeout=30, follow_redirects=True)
+    r.raise_for_status()
+    return pd.read_html(StringIO(r.text))
+
+
+def fetch_wikipedia_constituents(source: str) -> list[dict[str, Any]]:
+    """[{ticker, name, sector, exchange, region, currency, source_symbol}] from the Wikipedia table (network)."""
+    tables = _read_html_tables(WIKI[source])
     out: list[dict[str, Any]] = []
     if source == "sp500":
         df = tables[0]

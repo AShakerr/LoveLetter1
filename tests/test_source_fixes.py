@@ -376,3 +376,86 @@ def test_ecb_recorded_fixture_is_the_retired_icp_series(settings):
     assert (
         EcbFetcher(settings=settings, today=dt.date(2026, 9, 5))._current(raw["ECB_DEPO"]) is True
     )
+
+
+# ------------------------------------------------------------ Alpha Vantage: pacing, throttle retry, partial
+def test_alphavantage_paces_calls_and_keeps_partial_results(settings, tmp_path, monkeypatch):
+    from desk.sources.alphavantage import (
+        CALL_SPACING_S,
+        THROTTLE_RETRY_S,
+        AlphaVantageFetcher,
+        CallBudget,
+    )
+
+    monkeypatch.setattr(settings, "alphavantage_api_key", "k")
+    sleeps: list[float] = []
+    calls: list[str] = []
+    note = {
+        "Note": "Please consider spreading out your free API requests more sparingly (1 request per second)"
+    }
+
+    def fake_get(url, params=None, **kw):
+        key = params.get("tickers") or params.get("topics")
+        calls.append(key)
+        if key == "NVDA" and calls.count("NVDA") == 1:
+            return note  # first NVDA call is throttled, the retry succeeds
+        if key == "economy_macro":
+            return note  # throttled twice -> skipped
+        return {"feed": []}
+
+    monkeypatch.setattr("desk.sources.alphavantage.http_get_json", fake_get)
+    f = AlphaVantageFetcher(
+        ["TSLA", "NVDA"],
+        topics=["economy_macro", "financial_markets"],
+        settings=settings,
+        budget=CallBudget(tmp_path / "b.json", limit=25),
+        sleep=sleeps.append,
+    )
+    raw = f._raw()
+    assert set(raw["tickers"]) == {"TSLA", "NVDA"} and set(raw["topics"]) == {"financial_markets"}
+    assert raw["_errors"] == [f"economy_macro: alphavantage throttled: {note['Note']}"]
+    assert calls == ["TSLA", "NVDA", "NVDA", "economy_macro", "economy_macro", "financial_markets"]
+    assert sleeps.count(THROTTLE_RETRY_S) == 2 and sleeps.count(CALL_SPACING_S) == 5
+    assert f.attempts == 1  # the batch is never re-run wholesale
+    monkeypatch.setattr(
+        "desk.sources.alphavantage.http_get_json", lambda url, params=None, **kw: note
+    )
+    with pytest.raises(RuntimeError, match="nothing fetched"):
+        AlphaVantageFetcher(
+            ["TSLA"],
+            topics=[],
+            settings=settings,
+            budget=CallBudget(tmp_path / "c.json", limit=25),
+            sleep=sleeps.append,
+        )._raw()
+
+
+def test_wikipedia_tables_are_fetched_with_a_user_agent(monkeypatch):
+    from desk import screener
+
+    seen = {}
+
+    class R:
+        text = "<table><tr><th>Symbol</th><th>Security</th><th>GICS Sector</th></tr><tr><td>BRK.B</td><td>Berkshire</td><td>Financials</td></tr></table>"
+
+        def raise_for_status(self):
+            pass
+
+    def fake_get(url, headers=None, **kw):
+        seen["url"], seen["ua"] = url, headers["User-Agent"]
+        return R()
+
+    monkeypatch.setattr("httpx.get", fake_get)
+    rows = screener.fetch_wikipedia_constituents("sp500")
+    assert seen["url"] == screener.WIKI["sp500"] and "desk" in seen["ua"]
+    assert rows == [
+        {
+            "ticker": "BRK-B",
+            "name": "Berkshire",
+            "sector": "Financials",
+            "exchange": "NYSE/NASDAQ",
+            "region": "USA",
+            "currency": "USD",
+            "source_symbol": "BRK-B",
+        }
+    ]
