@@ -311,3 +311,68 @@ def test_fred_window_covers_thirteen_monthly_prints(settings):
     assert len(cpi) == 12  # what the Mac recorded; explains 'Inflation unknown' until re-recorded
     f = FredFetcher(settings=settings)
     assert (dt.date.today() - f.start).days >= MIN_LOOKBACK_DAYS >= 400
+
+
+# ------------------------------------------------------------------------------ ECB: ICP -> HICP dataset
+def _sdmx(periods: list[str], values: list[float]) -> dict:
+    return {
+        "dataSets": [
+            {
+                "series": {
+                    "0:0:0:0:0:0": {"observations": {str(i): [v] for i, v in enumerate(values)}}
+                }
+            }
+        ],
+        "structure": {"dimensions": {"observation": [{"values": [{"id": p} for p in periods]}]}},
+    }
+
+
+def test_ecb_prefers_the_hicp_dataset_and_falls_back_to_the_retired_icp_key(settings, monkeypatch):
+    from desk.sources.ecb import SERIES, EcbFetcher
+
+    assert SERIES["EZ_HICP"][0] == "HICP/M.U2.N.000000.4D0.ANR"
+    assert SERIES["EZ_HICP_CORE"][0] == "HICP/M.U2.N.XEF000.4D0.ANR"
+    today = dt.date(2026, 9, 5)
+    calls: list[str] = []
+
+    def fake_get(self, key):
+        calls.append(key)
+        if key.startswith("HICP/M.U2.N.000000"):
+            return _sdmx(["2026-06", "2026-07", "2026-08"], [3.2, 3.4, 4.0])
+        if key.startswith("HICP/"):
+            raise RuntimeError("404")  # pretend the core key is not there yet
+        if key.startswith("ICP/"):
+            return _sdmx(["2025-11", "2025-12"], [2.1, 1.9])  # discontinued: stale
+        return _sdmx(["2026-06-17"], [2.25])
+
+    monkeypatch.setattr(EcbFetcher, "_get", fake_get)
+    f = EcbFetcher(settings=settings, today=today)
+    raw = f._raw()
+    assert raw["_keys"]["EZ_HICP"] == "HICP/M.U2.N.000000.4D0.ANR"
+    assert (
+        raw["_keys"]["EZ_HICP_CORE"] == "ICP/M.U2.N.XEF000.4.ANR"
+    )  # stale fallback kept, and logged
+    assert any("EZ_HICP_CORE HICP/" in e for e in raw["_errors"])
+    assert calls.count("ICP/M.U2.N.000000.4.ANR") == 0  # the fresh HICP payload stopped the search
+    obs = f.parse(raw)
+    by = {}
+    for o in obs:
+        by.setdefault(o.series, []).append(o)
+    assert by["EZ_HICP"][-1].date == dt.date(2026, 8, 1) and by["EZ_HICP"][-1].value == 4.0
+    assert by["EZ_HICP_CORE"][-1].date == dt.date(2025, 12, 1)
+    assert "_keys" not in by and by["ECB_DEPO"][-1].value == 2.25
+
+
+def test_ecb_recorded_fixture_is_the_retired_icp_series(settings):
+    """What the Mac recorded on 2026-09-05: the ICP keys, last print 2025-12. The regime classifier excludes
+    it (see test_regime_classifier); re-recording with the HICP keys is what fixes it."""
+    from desk.sources.ecb import EcbFetcher, parse_sdmx
+
+    raw = load_fixture("ecb.json")
+    assert parse_sdmx(raw["EZ_HICP"])[-1][0] == "2025-12"
+    assert (
+        EcbFetcher(settings=settings, today=dt.date(2026, 9, 5))._current(raw["EZ_HICP"]) is False
+    )
+    assert (
+        EcbFetcher(settings=settings, today=dt.date(2026, 9, 5))._current(raw["ECB_DEPO"]) is True
+    )
