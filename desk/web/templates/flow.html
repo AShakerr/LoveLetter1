@@ -34,10 +34,12 @@
   {% endfor %}
   </tbody></table>
   {% else %}<p class="muted">No active signal. A cluster needs three distinct officers or directors buying on the open market within 30 days.</p>{% endif %}
+  {% if data.signals_unscored %}<p class="muted small">Net flow is tracked for {{ data.signals_tracked }} names; {{ data.signals_unscored }} of them have no 3-year history yet, so their percentile is not scored and they are not listed here.</p>{% endif %}
 </section>
 
 <section>
-  <h2>New filings</h2>
+  <h2>New filings <span class="muted">· {% if data.show_all %}all {{ data.counts.trades }} transactions{% else %}{{ data.counts.open_market }} open-market transactions; {{ data.hidden }} zero-weight rows (10b5-1 sales, exercises, grants, withholdings) collapsed{% endif %}</span>
+    {% if data.show_all %}<a class="small" href="/flow?source={{ data.source or '' }}&signal={{ data.signal or '' }}">open-market only</a>{% else %}<a class="small" href="/flow?source={{ data.source or '' }}&signal={{ data.signal or '' }}&all=1">show all</a>{% endif %}</h2>
   {% if data.rows %}
   <table class="runs small"><thead><tr><th>Filed</th><th>Traded</th><th>Lag</th><th>Ticker</th><th>Filer</th><th>Role</th><th>Side</th><th>Code</th><th>Qty</th><th>Price</th><th>Value</th><th>Scoring</th><th>Filing</th></tr></thead><tbody>
   {% for r in data.rows %}{% set t = r.t %}

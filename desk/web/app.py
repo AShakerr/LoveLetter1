@@ -493,12 +493,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         source: str | None = None,
         signal: str | None = None,
+        all: str | None = None,
         flash: str | None = None,
     ):
         from desk.flow import page_data
 
         with session_scope(settings) as session:
-            data = page_data(session, source=source or None, signal=signal or None)
+            data = page_data(
+                session, source=source or None, signal=signal or None, show_all=all == "1"
+            )
             return templates.TemplateResponse(
                 request, "flow.html", _base_ctx(request, data=data, flash=flash, active="flow")
             )

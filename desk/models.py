@@ -377,6 +377,8 @@ class DisclosedTrade(SQLModel, table=True):
     is_10b5_1: bool = False
     is_routine: bool = False
     committee_relevant: bool = False
+    # Form 4: the filer is an officer or director (the evidence base); 10% holders are shown, not scored
+    is_officer_or_director: bool = False
     raw_url: str
     fetched_at: dt.datetime
 

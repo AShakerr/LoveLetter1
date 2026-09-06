@@ -248,7 +248,9 @@ def test_store_signals_badges_and_routine_rule(settings):
         page = page_data(s, TODAY, days=3)
         assert page["counts"]["filings"] == 8 and page["counts"]["open_market_buys"] == 4
         assert page["watch"] == []
-        why = {r["t"].issuer_ticker + r["t"].transaction_code: r["why_zero"] for r in page["rows"]}
+        full = page_data(s, TODAY, days=3, show_all=True)
+        assert page["hidden"] == len(full["rows"]) - len(page["rows"]) > 0
+        why = {r["t"].issuer_ticker + r["t"].transaction_code: r["why_zero"] for r in full["rows"]}
         assert why["NVDAS"] == "10b5-1 plan" and why["TSLAA"].startswith("not open-market")
         assert (
             page_data(s, TODAY, signal="insider_cluster_buy")["counts"]["trades"] == 4
@@ -384,3 +386,47 @@ def test_constituent_refresh_writes_venue_symbols_and_reports_resolution(setting
         assert e["sample"] == ["NESN -> NESN.SW"]
         inst = s.exec(select(Instrument).where(Instrument.ticker == "NESN")).one()
         assert inst.source_symbol == "NESN.SW" and inst.currency == "CHF" and inst.exchange == "SIX"
+
+
+def test_joint_filing_counts_once_and_ten_percent_holders_are_not_scored(settings):
+    from xml.sax.saxutils import escape
+
+    sample = _sample()
+    xml = sample["filings"][0]["xml"]  # Allan Donald's SWK purchase
+    joint = xml.replace(
+        "</reportingOwner>",
+        "</reportingOwner><reportingOwner><reportingOwnerId><rptOwnerCik>9</rptOwnerCik>"
+        f"<rptOwnerName>{escape('DONALD FAMILY TRUST, L.L.C.')}</rptOwnerName></reportingOwnerId>"
+        "<reportingOwnerRelationship><isDirector>0</isDirector><isOfficer>0</isOfficer>"
+        "<isTenPercentOwner>1</isTenPercentOwner><isOther>0</isOther></reportingOwnerRelationship></reportingOwner>",
+        1,
+    )
+    raw = {"as_of": "2026-09-06", "filings": [dict(sample["filings"][0], xml=joint)]}
+    rows = trades_from_raw(raw)
+    assert len(rows) == 1  # one transaction, not one per reporting owner
+    assert (
+        rows[0]["filer_name"] == "Allan Donald"
+        and "joint with DONALD FAMILY TRUST" in rows[0]["filer_role"]
+    )
+    assert rows[0]["is_officer_or_director"] is True
+    # a 10% holder alone: shown, not scored
+    holder = xml.replace(
+        "<isDirector>1</isDirector><isOfficer>1</isOfficer><isTenPercentOwner>0</isTenPercentOwner>",
+        "<isDirector>0</isDirector><isOfficer>0</isOfficer><isTenPercentOwner>1</isTenPercentOwner>",
+    )
+    with session_scope(settings) as s:
+        sync_instruments(s)
+        from desk.screener import refresh_constituents
+
+        doc = load_fixture("constituents.json")
+        refresh_constituents(s, settings, fetch=lambda src: doc.get(src, []))
+        rows = trades_from_raw(
+            {"as_of": "2026-09-06", "filings": [dict(sample["filings"][0], xml=holder)]}
+        )
+        assert rows[0]["is_officer_or_director"] is False
+        store_trades(s, rows)
+        page = page_data(s, TODAY, days=3)
+        assert page["rows"][0]["why_zero"].startswith("10% holder")
+        assert page["counts"]["open_market_buys"] == 0
+        page_all = page_data(s, TODAY, days=3, show_all=True)
+        assert page_all["hidden"] == 0 and page["hidden"] == 0

@@ -218,34 +218,44 @@ def trades_from_raw(
             continue
         ticker = doc["issuer_ticker"] or (filing.get("ticker") or "").upper()
         filed = dt.date.fromisoformat(filing["filed"])
-        for owner in doc["owners"]:
-            for tx in doc["transactions"]:
-                if not tx.get("date"):
-                    continue
-                traded = dt.date.fromisoformat(tx["date"][:10])
-                cls = classify(tx)
-                rows.append(
-                    {
-                        "source": SOURCE,
-                        "filer_name": owner["name"],
-                        "filer_role": owner["role"],
-                        "is_officer_or_director": owner["is_officer_or_director"],
-                        "issuer_ticker": ticker,
-                        "trade_date": traded,
-                        "filed_date": filed,
-                        "lag_days": (filed - traded).days,
-                        "transaction_code": tx.get("code"),
-                        "code_name": CODE_NAMES.get((tx.get("code") or "").upper(), tx.get("code")),
-                        "quantity": tx.get("shares"),
-                        "price": tx.get("price"),
-                        "security": tx.get("security"),
-                        "is_10b5_1": bool(tx.get("is_10b5_1")),
-                        "footnotes": tx.get("footnotes"),
-                        "raw_url": filing["url"],
-                        "fetched_at": fetched,
-                        **cls,
-                    }
-                )
+        owners = doc["owners"] or [
+            {"name": "unknown", "role": None, "is_officer_or_director": False}
+        ]
+        # a joint filing (an entity and the person behind it) is one economic filer: the first owner
+        # carries the row, the others are named in the role, and the transaction is counted once
+        lead = next((o for o in owners if o["is_officer_or_director"]), owners[0])
+        others = [o["name"] for o in owners if o is not lead]
+        role = lead["role"] or ""
+        if others:
+            role = (role + " " if role else "") + f"(joint with {', '.join(others)})"
+        for tx in doc["transactions"]:
+            if not tx.get("date"):
+                continue
+            traded = dt.date.fromisoformat(tx["date"][:10])
+            cls = classify(tx)
+            rows.append(
+                {
+                    "source": SOURCE,
+                    "filer_name": lead["name"],
+                    "filer_role": role or None,
+                    "is_officer_or_director": any(o["is_officer_or_director"] for o in owners),
+                    "co_filers": others,
+                    "issuer_ticker": ticker,
+                    "trade_date": traded,
+                    "filed_date": filed,
+                    "lag_days": (filed - traded).days,
+                    "transaction_code": tx.get("code"),
+                    "code_name": CODE_NAMES.get((tx.get("code") or "").upper(), tx.get("code")),
+                    "quantity": tx.get("shares"),
+                    "price": tx.get("price"),
+                    "security": tx.get("security"),
+                    "is_10b5_1": bool(tx.get("is_10b5_1")),
+                    "footnotes": tx.get("footnotes"),
+                    "raw_url": filing["url"],
+                    "fetched_at": fetched,
+                    **cls,
+                }
+            )
     return rows
 
 

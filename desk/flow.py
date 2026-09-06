@@ -104,6 +104,7 @@ def store_trades(session: Session, rows: list[dict[str, Any]]) -> dict[str, int]
                     session, r["filer_name"], r["issuer_ticker"], r["trade_date"]
                 ),
                 committee_relevant=bool(r.get("committee_relevant")),
+                is_officer_or_director=bool(r.get("is_officer_or_director")),
                 raw_url=r["raw_url"],
                 fetched_at=r.get("fetched_at") or utcnow(),
             )
@@ -115,12 +116,14 @@ def store_trades(session: Session, rows: list[dict[str, Any]]) -> dict[str, int]
 
 # ------------------------------------------------------------------------------------------------ signals
 def _informative_insider(t: DisclosedTrade) -> bool:
+    """Brief 8d: opportunistic open-market trades by officers and directors. 10% holders are shown, not scored."""
     return (
         t.source == "form4"
         and t.is_open_market
         and not t.is_10b5_1
         and not t.is_routine
         and t.asset_type == "stock"
+        and bool(t.is_officer_or_director)
     )
 
 
@@ -360,7 +363,10 @@ def page_data(
     source: str | None = None,
     signal: str | None = None,
     days: int = 3,
+    show_all: bool = False,
 ) -> dict[str, Any]:
+    """Rows for the Flow page. By default only open-market rows are listed (the 10b5-1 sales, option
+    exercises, grants and withholdings are counted and collapsed); show_all lists everything."""
     today = today or dt.date.today()
     q = select(DisclosedTrade).where(DisclosedTrade.filed_date >= today - dt.timedelta(days=days))
     if source:
@@ -381,8 +387,12 @@ def page_data(
         keep = {i for i, ss in sig_by_inst.items() if any(s.signal == signal for s in ss)}
         trades = [t for t in trades if t.instrument_id in keep]
     inst = {i.id: i for i in session.exec(select(Instrument)).all()}
+    hidden = 0
     rows = []
     for t in trades:
+        if not show_all and (not t.is_open_market or t.is_10b5_1):
+            hidden += 1
+            continue
         rows.append(
             {
                 "t": t,
@@ -400,24 +410,38 @@ def page_data(
                     else "10b5-1 plan"
                     if t.is_10b5_1
                     else "routine calendar trade"
+                    if t.is_routine
+                    else "10% holder, not an officer or director: shown, not scored"
                 ),
             }
         )
+    rows.sort(
+        key=lambda r: (not r["scored"], r["t"].side != "buy")
+    )  # scored buys first, then the rest
     counts = {
         "filings": len({t.raw_url for t in trades}),
         "trades": len(trades),
+        "open_market": sum(1 for t in trades if t.is_open_market and not t.is_10b5_1),
         "open_market_buys": sum(1 for t in trades if _informative_insider(t) and t.side == "buy"),
         "scored_signals": sum(1 for s in signals if s.scored),
     }
+    # the signals table shows what scores or warns; net-flow rows without a percentile are counted, not listed
+    shown = [
+        s for s in signals if s.scored or s.signal in ("insider_sale_cluster", "congress_cluster")
+    ]
     return {
         "date": today,
         "days": days,
         "rows": rows,
-        "signals": sorted(signals, key=lambda s: -(s.strength or 0)),
+        "signals": sorted(shown, key=lambda s: -(s.strength or 0)),
+        "signals_tracked": len(signals),
+        "signals_unscored": len(signals) - len(shown),
         "signal_labels": SIGNAL_LABELS,
         "inst": inst,
         "counts": counts,
         "watch": [],  # people whose trades were followed by outperformance in this system's own log; empty until step 8
         "source": source,
         "signal": signal,
+        "show_all": show_all,
+        "hidden": hidden,
     }
