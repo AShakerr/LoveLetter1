@@ -120,6 +120,80 @@ def _read_html_tables(url: str):
     return pd.read_html(StringIO(r.text))
 
 
+# Yahoo exchange suffix and quote currency by country (STOXX 600 table) or by exchange name.
+COUNTRY_SUFFIX = {
+    "switzerland": (".SW", "CHF"),
+    "united kingdom": (".L", "GBP"),
+    "uk": (".L", "GBP"),
+    "britain": (".L", "GBP"),
+    "germany": (".DE", "EUR"),
+    "france": (".PA", "EUR"),
+    "netherlands": (".AS", "EUR"),
+    "sweden": (".ST", "SEK"),
+    "denmark": (".CO", "DKK"),
+    "finland": (".HE", "EUR"),
+    "italy": (".MI", "EUR"),
+    "spain": (".MC", "EUR"),
+    "norway": (".OL", "NOK"),
+    "belgium": (".BR", "EUR"),
+    "portugal": (".LS", "EUR"),
+    "austria": (".VI", "EUR"),
+    "ireland": (".IR", "EUR"),
+    "poland": (".WA", "PLN"),
+    "luxembourg": (".PA", "EUR"),
+    "czech republic": (".PR", "CZK"),
+    "czechia": (".PR", "CZK"),
+    "greece": (".AT", "EUR"),
+    "jersey": (".L", "GBP"),
+    "guernsey": (".L", "GBP"),
+    "isle of man": (".L", "GBP"),
+}
+EXCHANGE_SUFFIX = {
+    "six": ".SW",
+    "london": ".L",
+    "xetra": ".DE",
+    "frankfurt": ".DE",
+    "euronext paris": ".PA",
+    "paris": ".PA",
+    "euronext amsterdam": ".AS",
+    "amsterdam": ".AS",
+    "stockholm": ".ST",
+    "nasdaq stockholm": ".ST",
+    "copenhagen": ".CO",
+    "helsinki": ".HE",
+    "milan": ".MI",
+    "borsa italiana": ".MI",
+    "madrid": ".MC",
+    "oslo": ".OL",
+    "brussels": ".BR",
+    "lisbon": ".LS",
+    "vienna": ".VI",
+    "dublin": ".IR",
+    "warsaw": ".WA",
+    "prague": ".PR",
+    "athens": ".AT",
+}
+
+
+def european_yahoo_symbol(
+    ticker: str, country: str | None, exchange: str | None = None
+) -> tuple[str | None, str]:
+    """(yahoo symbol, quote currency) for a STOXX 600 ticker: 'AMBU B' + Denmark -> ('AMBU-B.CO', 'DKK').
+    None when the venue is unknown; the name is then priced only if a source_symbol is set by hand."""
+    sym = ticker.strip().upper().replace(" ", "-").replace(".", "-")
+    if country:
+        hit = COUNTRY_SUFFIX.get(country.strip().lower())
+        if hit:
+            return sym + hit[0], hit[1]
+    if exchange:
+        ex = exchange.strip().lower()
+        for key, suffix in EXCHANGE_SUFFIX.items():
+            if key in ex:
+                ccy = next((c for s, c in COUNTRY_SUFFIX.values() if s == suffix), "EUR")
+                return sym + suffix, ccy
+    return None, "EUR"
+
+
 def fetch_wikipedia_constituents(source: str) -> list[dict[str, Any]]:
     """[{ticker, name, sector, exchange, region, currency, source_symbol}] from the Wikipedia table (network)."""
     tables = _read_html_tables(WIKI[source])
@@ -151,19 +225,33 @@ def fetch_wikipedia_constituents(source: str) -> list[dict[str, Any]]:
         tcol = next(c for c in df.columns if "Ticker" in str(c) or "Symbol" in str(c))
         ncol = next((c for c in df.columns if "Name" in str(c) or "Company" in str(c)), tcol)
         scol = next((c for c in df.columns if "Sector" in str(c) or "Industry" in str(c)), None)
+        ccol = next(
+            (c for c in df.columns if any(k in str(c) for k in ("Country", "Domicile", "Nation"))),
+            None,
+        )
+        xcol = next((c for c in df.columns if "Exchange" in str(c) or "Market" in str(c)), None)
+        if ccol is None and xcol is None:
+            log.warning(
+                "stoxx600: no country/exchange column in the Wikipedia table (%s); "
+                "European names stay unpriced until the table carries one",
+                [str(c) for c in df.columns],
+            )
         for _, r in df.iterrows():
             sym = str(r.get(tcol, "")).strip()
             if not sym or sym == "nan":
                 continue
+            country = str(r.get(ccol, "")).strip() if ccol else None
+            exchange = str(r.get(xcol, "")).strip() if xcol else None
+            yahoo, ccy = european_yahoo_symbol(sym, country or None, exchange or None)
             out.append(
                 {
                     "ticker": sym.upper(),
                     "name": str(r.get(ncol, sym)),
                     "sector": str(r.get(scol, "")) if scol else "",
-                    "exchange": "Europe",
+                    "exchange": exchange or "Europe",
                     "region": "Euro area",
-                    "currency": "EUR",
-                    "source_symbol": None,
+                    "currency": ccy,
+                    "source_symbol": yahoo,
                 }
             )
     return out

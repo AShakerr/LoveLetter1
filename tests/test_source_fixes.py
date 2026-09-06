@@ -76,21 +76,15 @@ def test_portfolio_converts_a_usd_quote_of_a_eur_holding(settings):
         confirm_batch(s, "seed:positions_2026-09-04")
         x = s.exec(select(Instrument).where(Instrument.ticker == "X9I1")).one()
         assert x.price_currency == "USD" and x.price_note
-        s.add(
-            Price(
-                instrument_id=x.id,
-                date=TODAY,
-                close=8.30,
-                source="test",
-                fetched_at=dt.datetime(2026, 9, 4, 7),
-            )
-        )
-        s.commit()
+        # the re-recorded yfinance.json carries AUEM.PA history for X9I1 (USD quotes on Euronext Paris)
+        recs = load_fixture("yfinance.json")["X9I1"]
+        assert len(recs) > 50
+        usd_close = max(recs, key=lambda r: r["date"])["close"]
         view = build_portfolio(s, settings)
         row = next(p for p in view.positions if p.instrument.ticker == "X9I1")
         usd_per_eur = view.fx["USD"].per_eur
-        assert usd_per_eur and row.price == pytest.approx(8.30 / usd_per_eur)
-        assert row.value_native == pytest.approx(row.position.quantity * 8.30 / usd_per_eur)
+        assert usd_per_eur and row.price == pytest.approx(usd_close / usd_per_eur)
+        assert row.value_native == pytest.approx(row.position.quantity * usd_close / usd_per_eur)
         assert "USD->EUR" in row.price_source and "AUEM.PA" in row.price_note
         assert row.pnl_pct == pytest.approx((row.price / row.position.avg_cost - 1) * 100)
 
@@ -308,7 +302,7 @@ def test_fred_window_covers_thirteen_monthly_prints(settings):
     from desk.sources.fred import MIN_LOOKBACK_DAYS, FredFetcher
 
     cpi = load_fixture("fred.json")["CPIAUCSL"]["observations"]
-    assert len(cpi) == 12  # what the Mac recorded; explains 'Inflation unknown' until re-recorded
+    assert len(cpi) >= 13  # re-recorded with the 480-day window: a y/y is computable
     f = FredFetcher(settings=settings)
     assert (dt.date.today() - f.start).days >= MIN_LOOKBACK_DAYS >= 400
 
@@ -363,19 +357,22 @@ def test_ecb_prefers_the_hicp_dataset_and_falls_back_to_the_retired_icp_key(sett
     assert "_keys" not in by and by["ECB_DEPO"][-1].value == 2.25
 
 
-def test_ecb_recorded_fixture_is_the_retired_icp_series(settings):
-    """What the Mac recorded on 2026-09-05: the ICP keys, last print 2025-12. The regime classifier excludes
-    it (see test_regime_classifier); re-recording with the HICP keys is what fixes it."""
+def test_ecb_recorded_fixture_is_current_hicp(settings):
+    """Re-recorded on 2026-09-06 with the HICP keys: the latest period is recent and both keys were used."""
     from desk.sources.ecb import EcbFetcher, parse_sdmx
 
     raw = load_fixture("ecb.json")
-    assert parse_sdmx(raw["EZ_HICP"])[-1][0] == "2025-12"
-    assert (
-        EcbFetcher(settings=settings, today=dt.date(2026, 9, 5))._current(raw["EZ_HICP"]) is False
+    assert raw["_keys"]["EZ_HICP"].startswith("HICP/") and raw["_keys"]["EZ_HICP_CORE"].startswith(
+        "HICP/"
     )
+    f = EcbFetcher(settings=settings, today=dt.date(2026, 9, 6))
     assert (
-        EcbFetcher(settings=settings, today=dt.date(2026, 9, 5))._current(raw["ECB_DEPO"]) is True
+        f._current(raw["EZ_HICP"])
+        and f._current(raw["EZ_HICP_CORE"])
+        and f._current(raw["ECB_DEPO"])
     )
+    assert parse_sdmx(raw["EZ_HICP"])[-1][0] >= "2026-07"
+    assert not any(o.series.startswith("_") for o in f.parse(raw))
 
 
 # ------------------------------------------------------------ Alpha Vantage: pacing, throttle retry, partial
@@ -459,3 +456,47 @@ def test_wikipedia_tables_are_fetched_with_a_user_agent(monkeypatch):
             "source_symbol": "BRK-B",
         }
     ]
+
+
+def test_european_constituents_get_yahoo_symbols_from_the_country_column(monkeypatch):
+    from desk import screener
+
+    assert screener.european_yahoo_symbol("AMBU B", "Denmark") == ("AMBU-B.CO", "DKK")
+    assert screener.european_yahoo_symbol("BT.A", "United Kingdom") == ("BT-A.L", "GBP")
+    assert screener.european_yahoo_symbol("ZURN", "Switzerland") == ("ZURN.SW", "CHF")
+    assert screener.european_yahoo_symbol("NDA FI", "Finland") == ("NDA-FI.HE", "EUR")
+    assert screener.european_yahoo_symbol("ENEL", None, "Borsa Italiana") == ("ENEL.MI", "EUR")
+    assert screener.european_yahoo_symbol("XYZ", "Atlantis") == (None, "EUR")
+
+    class R:
+        text = (
+            "<table><tr><th>Ticker</th><th>Name</th><th>Country</th><th>ICB Sector</th></tr>"
+            "<tr><td>NOVO B</td><td>Novo Nordisk</td><td>Denmark</td><td>Health Care</td></tr>"
+            "<tr><td>SAP</td><td>SAP SE</td><td>Germany</td><td>Technology</td></tr></table>"
+        )
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr("httpx.get", lambda url, headers=None, **kw: R())
+    rows = screener.fetch_wikipedia_constituents("stoxx600")
+    assert [(r["ticker"], r["source_symbol"], r["currency"]) for r in rows] == [
+        ("NOVO B", "NOVO-B.CO", "DKK"),
+        ("SAP", "SAP.DE", "EUR"),
+    ]
+
+
+def test_universe_sync_does_not_retire_screener_members(settings):
+    """sync_instruments retires core names dropped from universe.yaml; it must leave the S&P/STOXX
+    screener members alone, otherwise every fetch/decide run empties the screener universe."""
+    from desk.screener import refresh_constituents, screener_instruments
+    from desk.universe import sync_instruments
+
+    doc = load_fixture("constituents.json")
+    with session_scope(settings) as s:
+        sync_instruments(s)
+        refresh_constituents(s, settings, fetch=lambda src: doc.get(src, []))
+        before = len(screener_instruments(s))
+        assert before > 400
+        sync_instruments(s)
+        assert len(screener_instruments(s)) == before

@@ -67,9 +67,10 @@ def sync_instruments(session: Session, items: list[dict] | None = None) -> int:
                 session.add(row)
                 changed += 1
     # instruments dropped from the universe are never recommended again (kept for history)
+    # (screener members are not in universe.yaml; their tradable flag belongs to the constituent refresh)
     known = {it["ticker"] for it in items}
     for row in session.exec(select(Instrument)).all():
-        if row.ticker not in known and row.tradable:
+        if row.ticker not in known and row.tradable and row.screener_member is None:
             row.tradable = False
             session.add(row)
             changed += 1
