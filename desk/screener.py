@@ -239,6 +239,7 @@ def fetch_wikipedia_constituents(source: str) -> list[dict[str, Any]]:
                 "European names stay unpriced until the table carries one",
                 [str(c) for c in df.columns],
             )
+        unmapped: dict[str, int] = {}
         for _, r in df.iterrows():
             sym = str(r.get(tcol, "")).strip()
             if not sym or sym == "nan":
@@ -246,6 +247,9 @@ def fetch_wikipedia_constituents(source: str) -> list[dict[str, Any]]:
             country = str(r.get(ccol, "")).strip() if ccol else None
             exchange = str(r.get(xcol, "")).strip() if xcol else None
             yahoo, ccy = european_yahoo_symbol(sym, country or None, exchange or None)
+            if yahoo is None:
+                key = country or exchange or "(no country/exchange value)"
+                unmapped[key] = unmapped.get(key, 0) + 1
             out.append(
                 {
                     "ticker": sym.upper(),
@@ -256,6 +260,16 @@ def fetch_wikipedia_constituents(source: str) -> list[dict[str, Any]]:
                     "currency": ccy,
                     "source_symbol": yahoo,
                 }
+            )
+        if unmapped:
+            top = sorted(unmapped.items(), key=lambda kv: -kv[1])[:8]
+            log.warning(
+                "stoxx600: %d of %d rows have no venue mapping; unmapped values: %s "
+                "(columns seen: %s)",
+                sum(unmapped.values()),
+                len(out),
+                ", ".join(f"{k!r} x{n}" for k, n in top),
+                [str(c) for c in df.columns],
             )
     return out
 
@@ -328,6 +342,12 @@ def refresh_constituents(
                     inst.screener_dropped, changed = False, True
                 if not inst.sector and sector:
                     inst.sector, changed = sector, True
+                # venue symbol, quote currency and exchange follow the table (a bare STOXX ticker is useless)
+                for field_name in ("source_symbol", "currency", "exchange"):
+                    new_v = r.get(field_name)
+                    if new_v and getattr(inst, field_name) != new_v:
+                        setattr(inst, field_name, new_v)
+                        changed = True
                 if changed:
                     session.add(inst)
                     updated += 1
@@ -340,13 +360,24 @@ def refresh_constituents(
                 session.add(inst)
                 dropped += 1
         session.commit()
-        summary[source] = {
+        resolved = [r for r in rows if r.get("source_symbol")]
+        entry: dict[str, Any] = {
             "status": "ok",
             "members": len(seen),
             "added": added,
             "updated": updated,
             "dropped": dropped,
+            "symbols_resolved": len(resolved),
+            "symbols_unresolved": len(rows) - len(resolved),
+            "sample": [f"{r['ticker']} -> {r['source_symbol']}" for r in resolved[:10]],
         }
+        if rows and not resolved and source != "safra_focus_list":
+            entry["warning"] = (
+                f"{source}: no row resolved to a venue symbol; these names cannot be priced. "
+                "The Wikipedia table's country/exchange column did not map (see the log)."
+            )
+            log.warning(entry["warning"])
+        summary[source] = entry
     return summary
 
 

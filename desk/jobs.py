@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
+
+from sqlmodel import Session, select
 
 from desk.config import Settings, get_settings
 from desk.db import init_db, session_scope
@@ -193,10 +195,14 @@ def run_screener_daily(settings: Settings | None = None) -> dict:
     with session_scope(settings) as session:
         try:
             members = screener_instruments(session)
+            # a European member without a venue symbol is a guaranteed miss: skip it and count it
+            no_venue = [
+                i.ticker for i in members if not i.source_symbol and (i.region or "") != "USA"
+            ]
             symbols = {
                 i.ticker: i.source_symbol or i.ticker
                 for i in members
-                if not i.source_symbol or "." not in (i.source_symbol or "") or True
+                if i.ticker not in set(no_venue)
             }
             fetched = 0
             if symbols:
@@ -205,6 +211,7 @@ def run_screener_daily(settings: Settings | None = None) -> dict:
                     counts = persist_observations(session, outcome.observations)
                     fetched = sum(v for k, v in counts.items() if not k.startswith("skipped"))
             res = run_screener(session, settings)
+            coverage = price_coverage(session, members)
         except Exception as exc:  # noqa: BLE001
             log.exception("screener failed")
             session.add(
@@ -236,8 +243,38 @@ def run_screener_daily(settings: Settings | None = None) -> dict:
             "rows": res.get("written", 0),
             "scored": res.get("scored"),
             "prices": fetched,
+            "prices_note": "new price rows stored this run; 0 on a weekend or when the last session is already stored",
+            **coverage,
+            "no_venue_symbol": len(no_venue),
+            "no_venue_sample": no_venue[:10],
             "error": res.get("note"),
         }
+
+
+def price_coverage(session: Session, members: list) -> dict:
+    """How many screener members have a price within the last 7 days, and the latest price date."""
+    from sqlalchemy import func
+
+    from desk.models import Price
+
+    if not members:
+        return {"priced_last_7d": 0, "unpriced": 0, "latest_price_date": None}
+    ids = [i.id for i in members]
+    since = date.today() - timedelta(days=7)
+    rows = session.exec(
+        select(Price.instrument_id, func.max(Price.date))
+        .where(Price.instrument_id.in_(ids), Price.date >= since)
+        .group_by(Price.instrument_id)
+    ).all()
+    priced = {r[0] for r in rows}
+    latest = max((r[1] for r in rows), default=None)
+    unpriced = [i.ticker for i in members if i.id not in priced]
+    return {
+        "priced_last_7d": len(priced),
+        "unpriced": len(unpriced),
+        "unpriced_sample": unpriced[:10],
+        "latest_price_date": latest.isoformat() if latest else None,
+    }
 
 
 def run_fundamentals_weekly(settings: Settings | None = None) -> dict:

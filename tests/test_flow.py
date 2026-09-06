@@ -352,3 +352,35 @@ def test_weekly_fundamentals_skips_european_names_without_a_venue_symbol(setting
         )
         assert "ZURN" in res["skipped_no_venue_symbol"] and "ZURN" not in calls
         assert set(calls) == {"AAPL", "SAP.DE"} and res["ok"] == 2
+
+
+def test_constituent_refresh_writes_venue_symbols_and_reports_resolution(settings):
+    from desk.screener import refresh_constituents
+
+    row = {
+        "ticker": "NESN",
+        "name": "Nestle",
+        "sector": "Consumer Staples",
+        "exchange": "Europe",
+        "region": "Euro area",
+        "currency": "EUR",
+        "source_symbol": None,
+    }
+    with session_scope(settings) as s:
+        sync_instruments(s)
+        first = refresh_constituents(
+            s, settings, fetch=lambda src: [row] if src == "stoxx600" else [], only=["stoxx600"]
+        )
+        assert (
+            first["stoxx600"]["symbols_resolved"] == 0
+            and "no row resolved" in first["stoxx600"]["warning"]
+        )
+        mapped = dict(row, source_symbol="NESN.SW", currency="CHF", exchange="SIX")
+        second = refresh_constituents(
+            s, settings, fetch=lambda src: [mapped] if src == "stoxx600" else [], only=["stoxx600"]
+        )
+        e = second["stoxx600"]
+        assert e["updated"] == 1 and e["symbols_resolved"] == 1 and "warning" not in e
+        assert e["sample"] == ["NESN -> NESN.SW"]
+        inst = s.exec(select(Instrument).where(Instrument.ticker == "NESN")).one()
+        assert inst.source_symbol == "NESN.SW" and inst.currency == "CHF" and inst.exchange == "SIX"
