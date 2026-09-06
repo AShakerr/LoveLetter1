@@ -244,8 +244,13 @@ def run_weekly(
     budget = CallBudget(
         settings.cache_dir / "alphavantage.budget.json", settings.alphavantage_daily_budget
     )
-    ok, fallback, failed = 0, 0, []
+    ok, fallback, failed, unpriced = 0, 0, [], []
     for inst in instruments:
+        if inst.screener_member == "stoxx600" and not inst.source_symbol:
+            # no venue symbol yet (constituent refresh found no country column): a bare European ticker is
+            # a guaranteed yfinance 404 and Alpha Vantage OVERVIEW only covers US listings
+            unpriced.append(inst.ticker)
+            continue
         symbol = inst.source_symbol or inst.ticker
         values: dict[str, Any] | None = None
         try:
@@ -260,6 +265,7 @@ def run_weekly(
             and av_fallback
             and settings.alphavantage_api_key
             and inst.kind == InstrumentKind.stock
+            and _us_listed(inst)
         ):
             try:
                 values = fetch_alphavantage_overview(
@@ -296,5 +302,14 @@ def run_weekly(
         "ok": ok,
         "alphavantage_fallback": fallback,
         "failed": failed,
+        "skipped_no_venue_symbol": unpriced,
         "earnings_events": earnings,
     }
+
+
+def _us_listed(inst: Instrument) -> bool:
+    """Alpha Vantage OVERVIEW serves US listings; a venue suffix or a European membership means it will not."""
+    sym = inst.source_symbol or inst.ticker
+    if "." in sym:
+        return False
+    return inst.screener_member != "stoxx600" and (inst.region in (None, "USA", "Global"))

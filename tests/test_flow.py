@@ -288,3 +288,67 @@ def test_flow_job_and_page(settings, monkeypatch):
     )  # filings filtered; signals stay
     with session_scope(settings) as s:
         assert s.exec(select(FlowSignal)).all()
+
+
+def test_weekly_fundamentals_skips_european_names_without_a_venue_symbol(settings):
+    from desk.fundamentals import run_weekly
+    from desk.screener import refresh_constituents
+
+    calls: list[str] = []
+
+    def fake_fetch(symbol):
+        calls.append(symbol)
+        return {"trailingPE": 10.0}
+
+    with session_scope(settings) as s:
+        sync_instruments(s)
+        refresh_constituents(
+            s,
+            settings,
+            fetch=lambda src: {
+                "sp500": [
+                    {
+                        "ticker": "AAPL",
+                        "name": "Apple",
+                        "sector": "Information Technology",
+                        "exchange": "NASDAQ",
+                        "region": "USA",
+                        "currency": "USD",
+                        "source_symbol": "AAPL",
+                    }
+                ],
+                "stoxx600": [
+                    {
+                        "ticker": "ZURN",
+                        "name": "Zurich",
+                        "sector": "Insurance",
+                        "exchange": "Europe",
+                        "region": "Euro area",
+                        "currency": "EUR",
+                        "source_symbol": None,
+                    },
+                    {
+                        "ticker": "SAP",
+                        "name": "SAP SE",
+                        "sector": "Technology",
+                        "exchange": "Xetra",
+                        "region": "Euro area",
+                        "currency": "EUR",
+                        "source_symbol": "SAP.DE",
+                    },
+                ],
+            }.get(src, []),
+        )
+        members = [
+            i for i in s.exec(select(Instrument)).all() if i.ticker in ("AAPL", "ZURN", "SAP")
+        ]
+        res = run_weekly(
+            s,
+            settings,
+            instruments=members,
+            fetch=fake_fetch,
+            fetch_earnings=None,
+            av_fallback=True,
+        )
+        assert "ZURN" in res["skipped_no_venue_symbol"] and "ZURN" not in calls
+        assert set(calls) == {"AAPL", "SAP.DE"} and res["ok"] == 2
