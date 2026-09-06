@@ -157,6 +157,25 @@ def flow(fetch: bool = True, verbose: bool = False) -> None:
     typer.echo(f"signals recomputed from stored trades: {len(sigs)}")
 
 
+@app.command("screener-universe")
+def screener_universe_cmd(
+    largest: int = typer.Option(
+        0, help="List the N largest names by market cap (needs fundamentals)"
+    ),
+    source: str = typer.Option("", help="Restrict --largest to one source, e.g. stoxx600"),
+) -> None:
+    """Per-source counts: members, tradable, dropped, priced this week, with fundamentals, and how many would
+    enter the screener if the source were flipped to tradable."""
+    from desk.db import init_db, session_scope
+    from desk.screener import universe_report
+
+    settings = get_settings()
+    init_db(settings)
+    with session_scope(settings) as s:
+        rep = universe_report(s, largest=largest, source=source or None)
+    typer.echo(json.dumps(rep, indent=1, default=str))
+
+
 @app.command("kill-conditions")
 def kill_conditions_cmd() -> None:
     """Attach docs/seed/kill_conditions_*.yaml to open positions."""

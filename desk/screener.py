@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -292,6 +293,47 @@ def safra_focus_list(session: Session) -> list[dict[str, Any]]:
     return out
 
 
+_NOISE = {
+    "inc",
+    "inc.",
+    "plc",
+    "sa",
+    "se",
+    "ag",
+    "nv",
+    "n.v.",
+    "co",
+    "co.",
+    "corp",
+    "corporation",
+    "ltd",
+    "limited",
+    "the",
+    "group",
+    "holdings",
+    "holding",
+    "company",
+    "&",
+    "and",
+    "spa",
+    "ab",
+    "asa",
+    "oyj",
+}
+
+
+def _same_company(a: str | None, b: str | None) -> bool:
+    """Loose name match for ticker collisions: the first two meaningful words agree."""
+
+    def words(s: str | None) -> list[str]:
+        return [w for w in re.sub(r"[^a-z0-9 ]", " ", (s or "").lower()).split() if w not in _NOISE]
+
+    wa, wb = words(a), words(b)
+    if not wa or not wb:
+        return False
+    return wa[:2] == wb[:2] or wa[0] == wb[0] and (len(wa) == 1 or len(wb) == 1)
+
+
 def refresh_constituents(
     session: Session,
     settings: Settings | None = None,
@@ -311,10 +353,29 @@ def refresh_constituents(
             continue
         seen: set[str] = set()
         added = updated = 0
+        collisions: list[dict[str, str]] = []
         for r in rows:
             t = r["ticker"]
-            seen.add(t)
             inst = session.exec(select(Instrument).where(Instrument.ticker == t)).first()
+            if inst is not None and inst.screener_member and inst.screener_member != source:
+                # the same ticker on another list: Linde is LIN on the NYSE and LIN in the STOXX table
+                if _same_company(inst.name, r.get("name")):
+                    collisions.append(
+                        {
+                            "ticker": t,
+                            "kept": inst.screener_member,
+                            "reason": "same company; one line kept",
+                        }
+                    )
+                    seen.add(t)
+                    continue
+                # a different company: keep both under distinct tickers (the venue symbol names the second)
+                alt = r.get("source_symbol") or f"{t}:{source}"
+                collisions.append({"ticker": t, "kept": inst.screener_member, "renamed": alt})
+                r = dict(r, ticker=alt)
+                t = alt
+                inst = session.exec(select(Instrument).where(Instrument.ticker == t)).first()
+            seen.add(t)
             sector = SECTOR_MAP.get(r.get("sector") or "", r.get("sector") or None) or None
             tradable = cfg.tradable_overrides.get(t, bool(cfg.tradable_default.get(source, False)))
             if inst is None:
@@ -371,6 +432,8 @@ def refresh_constituents(
             "symbols_unresolved": len(rows) - len(resolved),
             "sample": [f"{r['ticker']} -> {r['source_symbol']}" for r in resolved[:10]],
         }
+        if collisions:
+            entry["collisions"] = collisions
         if rows and not resolved and source != "safra_focus_list":
             entry["warning"] = (
                 f"{source}: no row resolved to a venue symbol; these names cannot be priced. "
@@ -908,3 +971,74 @@ def propose_buy(
     session.commit()
     session.refresh(d)
     return d
+
+
+def universe_report(
+    session: Session, largest: int = 0, source: str | None = None
+) -> dict[str, Any]:
+    """Counts per constituent source and, optionally, the largest names by market cap from stored fundamentals."""
+    import datetime as dt
+
+    from sqlalchemy import func
+
+    from desk.models import Fundamental, Price
+
+    members = session.exec(select(Instrument).where(Instrument.screener_member.is_not(None))).all()
+    since = dt.date.today() - dt.timedelta(days=7)
+    priced = {
+        r[0]
+        for r in session.exec(
+            select(Price.instrument_id).where(Price.date >= since).group_by(Price.instrument_id)
+        ).all()
+    }
+    caps = {
+        r[0]: r[1]
+        for r in session.exec(
+            select(Fundamental.instrument_id, func.max(Fundamental.value))
+            .where(Fundamental.field == "marketCap")
+            .group_by(Fundamental.instrument_id)
+        ).all()
+    }
+    with_f = {
+        r[0]
+        for r in session.exec(
+            select(Fundamental.instrument_id).group_by(Fundamental.instrument_id)
+        ).all()
+    }
+    out: dict[str, Any] = {"sources": {}}
+    for src in sorted({m.screener_member for m in members}):
+        rows = [m for m in members if m.screener_member == src]
+        active = [m for m in rows if not m.screener_dropped]
+        out["sources"][src] = {
+            "members": len(rows),
+            "dropped": len(rows) - len(active),
+            "tradable": sum(1 for m in active if m.tradable),
+            "entering_screener_now": sum(1 for m in active if m.tradable),
+            "would_enter_if_all_tradable": len(active),
+            "with_venue_symbol": sum(1 for m in active if m.source_symbol),
+            "priced_last_7d": sum(1 for m in active if m.id in priced),
+            "with_fundamentals": sum(1 for m in active if m.id in with_f),
+        }
+    if largest:
+        pool = [
+            m
+            for m in members
+            if not m.screener_dropped and (not source or m.screener_member == source)
+        ]
+        ranked = sorted(pool, key=lambda m: -(caps.get(m.id) or 0))
+        out["largest"] = [
+            {
+                "ticker": m.ticker,
+                "yahoo": m.source_symbol,
+                "name": m.name,
+                "sector": m.sector,
+                "market_cap": caps.get(m.id),
+                "tradable": m.tradable,
+            }
+            for m in ranked[:largest]
+        ]
+        out["largest_note"] = (
+            f"{sum(1 for m in pool if caps.get(m.id))} of {len(pool)} names have a stored marketCap; "
+            "run `desk fundamentals` first if the count is low"
+        )
+    return out

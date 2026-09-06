@@ -430,3 +430,82 @@ def test_joint_filing_counts_once_and_ten_percent_holders_are_not_scored(setting
         assert page["counts"]["open_market_buys"] == 0
         page_all = page_data(s, TODAY, days=3, show_all=True)
         assert page_all["hidden"] == 0 and page["hidden"] == 0
+
+
+def test_constituent_ticker_collisions_keep_companies_apart(settings):
+    from desk.screener import _same_company, refresh_constituents, universe_report
+
+    assert _same_company("Linde plc", "Linde")
+    assert _same_company("Rollins, Inc.", "Rollins")
+    assert not _same_company("Rollins, Inc.", "Rolls-Royce Holdings")
+    assert not _same_company("Lennox International", "Lion Industries")
+    sp = [
+        {
+            "ticker": "LIN",
+            "name": "Linde plc",
+            "sector": "Materials",
+            "exchange": "NYSE",
+            "region": "USA",
+            "currency": "USD",
+            "source_symbol": "LIN",
+        },
+        {
+            "ticker": "ROL",
+            "name": "Rollins, Inc.",
+            "sector": "Industrials",
+            "exchange": "NYSE",
+            "region": "USA",
+            "currency": "USD",
+            "source_symbol": "ROL",
+        },
+    ]
+    st = [
+        {
+            "ticker": "LIN",
+            "name": "Linde",
+            "sector": "Chemicals",
+            "exchange": "Xetra",
+            "region": "Euro area",
+            "currency": "EUR",
+            "source_symbol": "LIN.DE",
+        },
+        {
+            "ticker": "ROL",
+            "name": "Rolls-Royce Holdings",
+            "sector": "Industrials",
+            "exchange": "LSE",
+            "region": "Euro area",
+            "currency": "GBP",
+            "source_symbol": "ROL.L",
+        },
+    ]
+    with session_scope(settings) as s:
+        sync_instruments(s)
+        res = refresh_constituents(
+            s,
+            settings,
+            fetch=lambda src: {"sp500": sp, "stoxx600": st}.get(src, []),
+            only=["sp500", "stoxx600"],
+        )
+        coll = {c["ticker"]: c for c in res["stoxx600"]["collisions"]}
+        assert (
+            coll["LIN"]["reason"].startswith("same company") and coll["ROL"]["renamed"] == "ROL.L"
+        )
+        lin = s.exec(select(Instrument).where(Instrument.ticker == "LIN")).one()
+        assert (
+            lin.screener_member == "sp500" and lin.source_symbol == "LIN"
+        )  # the NYSE line kept as is
+        rol_l = s.exec(select(Instrument).where(Instrument.ticker == "ROL.L")).one()
+        assert (
+            rol_l.screener_member == "stoxx600"
+            and rol_l.source_symbol == "ROL.L"
+            and not rol_l.tradable
+        )
+        rol = s.exec(select(Instrument).where(Instrument.ticker == "ROL")).one()
+        assert rol.screener_member == "sp500" and rol.source_symbol == "ROL"
+        rep = universe_report(s, largest=5, source="stoxx600")
+        assert (
+            rep["sources"]["stoxx600"]["would_enter_if_all_tradable"] == 1
+        )  # ROL.L; LIN was folded into the US line
+        assert rep["sources"]["sp500"]["entering_screener_now"] == 2
+        assert [x["ticker"] for x in rep["largest"]] == ["ROL.L"]
