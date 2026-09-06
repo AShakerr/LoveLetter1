@@ -21,6 +21,7 @@ from desk.execution import seed_paper_book, settle_paper, submit_decision
 from desk.kill_conditions import (
     candidate_conditions,
     condition_for,
+    draft_kill_conditions,
     first_mandatory_predicate,
     kill_block,
 )
@@ -79,12 +80,51 @@ def _basis(name: str, inputs: dict[str, Any]) -> str:
         if name == "regime":
             return f"fit now {inputs.get('fit_current')} / reverse {inputs.get('fit_reverse')} ({inputs.get('regime')})"
         if name == "portfolio":
-            return f"{inputs.get('why')}; corr with {inputs.get('largest_holding')} {inputs.get('corr_90d')}"
+            corr = "; ".join(
+                f"corr vs {c['holding']}"
+                + (f" (via {c['proxy']})" if c.get("proxy") else "")
+                + (
+                    f" {c['corr_90d']:+.2f}"
+                    if c.get("corr_90d") is not None
+                    else f" {c.get('note')}"
+                )
+                for c in inputs.get("correlations", [])
+            )
+            return f"{inputs.get('why')}; {corr or 'no correlation inputs'}; penalty {inputs.get('correlation_penalty', 0)}"
+        if name == "crowd":
+            return inputs.get("basis") or "—"
         if name == "valuation":
             parts = []
+            if inputs.get("note") == "no fundamentals":
+                return "no fundamentals"
+            if "fundamentals" in inputs:
+                fi = inputs["fundamentals"]
+                peg = fi.get("peg", {})
+                sec = fi.get("forward_pe_vs_sector", {})
+                hist = fi.get("trailing_pe_vs_history", {})
+                parts.append(f"PEG {peg.get('value')} -> {peg.get('score')}")
+                if sec.get("score") is not None:
+                    parts.append(
+                        f"fwd P/E {sec.get('value'):.1f} vs sector median {sec.get('sector_median'):.1f} "
+                        f"(z {sec.get('z'):+.2f}) -> {sec.get('score')}"
+                    )
+                else:
+                    parts.append(f"fwd P/E: {sec.get('note')}")
+                if hist.get("score") is not None:
+                    parts.append(
+                        f"trailing P/E {hist.get('value')} vs 5y median {hist.get('median_5y')} -> {hist.get('score')}"
+                    )
+                else:
+                    parts.append("history: sector component reused (<52 weeks)")
+                if fi.get("value_trap_cap"):
+                    parts.append("value-trap cap 2")
+                if fi.get("as_of", {}).get("date"):
+                    parts.append(f"as of {fi['as_of']['date']}")
             if "pe" in inputs:
+                pe = inputs["pe"]
                 parts.append(
-                    f"P/E {inputs['pe']['current']} vs median {inputs['pe']['median']} (n={inputs['pe']['n']})"
+                    f"P/E {pe.get('pe')} vs 5y median {pe.get('median_5y')} (n={pe.get('n')}, "
+                    f"z {pe.get('z')}, series {pe.get('series')})"
                 )
             if "target" in inputs:
                 parts.append(
@@ -119,12 +159,19 @@ def reasoning_markdown(
     kill: dict[str, Any] | None,
     reverse: str,
     basis_note: str | None,
+    sizing: dict[str, Any] | None = None,
 ) -> str:
     out = [f"# {action} {inst.ticker} — {inst.name}", "", f"**Regime:** {regime.label}", ""]
     if basis_note:
         out += [f"> {basis_note}", ""]
     if size_pct:
-        out += [f"**Size:** {size_pct:.1%} of the portfolio", ""]
+        line = f"**Size:** {size_pct:.1%} of the portfolio"
+        if sizing:
+            terms = ", ".join(
+                f"{k} {v:.1%}" for k, v in sizing.items() if isinstance(v, (int, float))
+            )
+            line += f" = min({terms})"
+        out += [line, ""]
     if res is not None:
         out += ["## Score", "", factor_table(res), ""]
         if res.notes:
@@ -279,7 +326,8 @@ def run_pipeline(
             new.append(_held_decision(inst, action, size, res, my_flags, kill, reverse))
 
     # 2. buy side: score >= 75, tradable, no mandatory conflict; sized by cash + limits + 5% cap
-    cash_avail = (view.cash_eur / view.total_eur if view.total_eur else 0.0) + proceeds
+    cash_now = view.cash_eur / view.total_eur if view.total_eur else 0.0
+    cash_avail = cash_now + proceeds
     candidates = sorted((r for r in results if r.band == "act"), key=lambda r: -r.row.total)
     for res in candidates:
         inst = session.get(Instrument, res.row.instrument_id)
@@ -297,6 +345,14 @@ def run_pipeline(
             MAX_BUY_PER_DECISION,
             cash_avail,
         ]
+        sizing: dict[str, Any] = {
+            "cash": cash_now,
+            "pending TRIM/SELL proceeds": proceeds,
+            "cash available": cash_avail,
+            "single-position headroom": limits.max_single_position - weight,
+            "theme headroom": limits.max_single_theme - theme_w,
+            "per-decision cap": MAX_BUY_PER_DECISION,
+        }
         if inst.kind == InstrumentKind.private:
             headroom.append(
                 limits.max_illiquid_private
@@ -335,13 +391,9 @@ def run_pipeline(
         kill = (
             (kill_block(pv.position) if pv else None)
             or condition_for(inst, kills)
-            or {
-                "thesis": f"Score falls below {cfg.score_floor:.0f} or a mandatory rule fires.",
-                "kills": [],
-                "add_blocked_while": None,
-                "pre_condition": None,
-                "theme": inst.theme,
-            }
+            or draft_kill_conditions(
+                session, inst, ref_px, cfg.stop_loss.get(inst.kind.value) or 0.18, settings
+            )
         )
         my_flags = flags_for(flags, inst.id)
         if _exists(session, today, inst.id, action):
@@ -375,6 +427,7 @@ def run_pipeline(
                     "cash": cash_avail,
                     "cap": MAX_BUY_PER_DECISION,
                 },
+                "sizing": sizing,
             },
             reasoning_md=reasoning_markdown(
                 action,
@@ -386,6 +439,7 @@ def run_pipeline(
                 kill,
                 f"Score below {cfg.score_floor:.0f}, or the kill condition above becoming true.",
                 basis_note,
+                sizing,
             ),
             created_at=utcnow(),
         )

@@ -113,6 +113,26 @@ def record_screener(args, settings) -> None:
         print(f"fundamentals: {len(by_ticker)} names")
 
 
+def record_flow(args, settings) -> None:
+    from desk.flow import flow_tickers
+    from desk.sources.form4 import Form4Fetcher
+
+    init_db(settings)
+    with session_scope(settings) as session:
+        tickers = flow_tickers(session)
+    f = Form4Fetcher(tickers, settings=settings, days=args.flow_days)
+    ok, why = f.enabled()
+    if not ok:
+        print(f"form4: skipped ({why})")
+        return
+    raw = f._raw()
+    (OUT / "form4.json").write_text(json.dumps(raw, default=str), encoding="utf-8")
+    print(
+        f"form4: wrote {OUT / 'form4.json'} ({len(raw['filings'])} filings for {len(tickers)} tickers, "
+        f"{len(f.trades(raw))} transactions, {len(raw.get('_errors', []))} errors)"
+    )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--days", type=int, default=120)
@@ -122,12 +142,20 @@ def main() -> None:
         action="store_true",
         help="also record constituents, screener prices and fundamentals",
     )
+    ap.add_argument(
+        "--flow",
+        action="store_true",
+        help="record the last two business days of Form 4 filings for the universe (form4.json)",
+    )
+    ap.add_argument("--flow-days", type=int, default=2)
     args = ap.parse_args()
     settings = get_settings()
     OUT.mkdir(parents=True, exist_ok=True)
     record_sources(args, settings)
     if args.screener:
         record_screener(args, settings)
+    if args.flow:
+        record_flow(args, settings)
 
 
 if __name__ == "__main__":

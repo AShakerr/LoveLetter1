@@ -39,12 +39,17 @@ DISCLAIMER = (
 )
 
 
+# an equity composite needs a hedging/retail signal (put/call or AAII) next to COT to count as positioning
+EQUITY_REQUIRED_ANY = ("CNN_PUTCALL_5D", "AAII_BULL_BEAR_SPREAD")
+
+
 @dataclass
 class CrowdResult:
     value: float | None
     percentile: float | None
     inputs: dict[str, Any] = field(default_factory=dict)
     note: str | None = None
+    incomplete: bool = False
 
 
 def range_percentile(
@@ -262,8 +267,39 @@ def score_crowd(
     return 3.0, f"mildly stretched short (P {p:.0f}): against: 3"
 
 
+def _positioning_summary(inputs: dict[str, Any]) -> str:
+    used = inputs.get("composite_of")
+    if used is None:
+        keys = [k for k, v in inputs.items() if isinstance(v, dict) and "series" in v]
+        used = [k for k in keys if inputs[k].get("percentile") is not None]
+    missing = [
+        k
+        for k, v in inputs.items()
+        if isinstance(v, dict) and "series" in v and v.get("percentile") is None
+    ]
+    parts = []
+    if used:
+        parts.append(
+            "inputs: " + ", ".join(f"{k} P{inputs[k].get('percentile'):.0f}" for k in used)
+        )
+    if missing:
+        parts.append(
+            "missing: " + ", ".join(f"{k} ({inputs[k].get('note', 'n/a')})" for k in missing)
+        )
+    return "; ".join(parts) if parts else "no positioning inputs"
+
+
 def crowd_factor(session: Session, inst: Instrument, today: dt.date) -> CrowdResult:
     p, inputs = crowd_long_percentile(session, inst, today)
+    used = inputs.get("composite_of")
+    if used is not None and not any(k in used for k in EQUITY_REQUIRED_ANY):
+        # only COT (or nothing) available: not a positioning read; 3 with the note, no adjustments
+        inputs["disclaimer"] = DISCLAIMER
+        note = (
+            "positioning inputs incomplete (no put/call or AAII); 3 used. "
+            + _positioning_summary(inputs)
+        )
+        return CrowdResult(3.0, None, inputs, note, incomplete=True)
     ev = last_with_actual(session, today, instrument_id=inst.id, theme=inst.theme)
     surprise = surprise_direction(ev, inst.theme, inst.id) if ev else 0
     if ev:
@@ -279,7 +315,7 @@ def crowd_factor(session: Session, inst: Instrument, today: dt.date) -> CrowdRes
     in_band = p is not None and 30 <= p <= 70
     value, note = score_crowd(p, surprise if in_band else 0, sent if in_band else 0)
     inputs["disclaimer"] = DISCLAIMER
-    return CrowdResult(value, p, inputs, note)
+    return CrowdResult(value, p, inputs, note + ". " + _positioning_summary(inputs))
 
 
 def consensus_gap(

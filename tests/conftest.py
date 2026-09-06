@@ -23,6 +23,7 @@ def settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> cfg.Settings:
     monkeypatch.setenv("DESK_INBOX_DIR", str(tmp_path / "inbox"))
     monkeypatch.setenv("DESK_ARCHIVE_DIR", str(tmp_path / "archive"))
     monkeypatch.setenv("DESK_SCHEDULER_ENABLED", "0")
+    monkeypatch.setenv("DESK_OFFLINE", "1")  # fetchers skip instead of hitting the blocked socket
     monkeypatch.setenv("DESK_BASIC_AUTH_USER", "u")
     monkeypatch.setenv("DESK_BASIC_AUTH_PASS", "p")
     monkeypatch.delenv("FRED_API_KEY", raising=False)

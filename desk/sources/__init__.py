@@ -24,14 +24,21 @@ def price_symbols(item: dict) -> str | list[str]:
     return [primary, *fallbacks] if fallbacks else primary
 
 
-def build_fetchers(universe: list[dict], settings: Settings | None = None) -> list[Fetcher]:
+def build_fetchers(
+    universe: list[dict],
+    settings: Settings | None = None,
+    sentiment_tickers: list[str] | None = None,
+) -> list[Fetcher]:
+    """`sentiment_tickers` overrides the universe's news_sentiment flags (the daily job passes the budget-ordered
+    list from desk.screener.sentiment_targets: held names first, then the screener's top 20)."""
     settings = settings or get_settings()
     symbols = {
         i["ticker"]: price_symbols(i)
         for i in universe
         if i.get("price_source", "yfinance") == "yfinance"
     }
-    sentiment_tickers = [i["ticker"] for i in universe if i.get("news_sentiment")]
+    if sentiment_tickers is None:
+        sentiment_tickers = [i["ticker"] for i in universe if i.get("news_sentiment")]
     return [
         YFinanceFetcher(symbols, settings=settings),
         FredFetcher(settings=settings),

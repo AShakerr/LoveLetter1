@@ -36,6 +36,7 @@
     <details><summary class="small muted">raw inputs JSON</summary><pre class="json">{{ score.inputs_json | tojson(indent=1) }}</pre></details>
     {% endif %}
     {% if rj.flags %}
+    {% if flow %}<p><span class="pill {% if 'selling' in flow %}review{% else %}ok{% endif %}" title="disclosed flow (brief 8d)">flow: {{ flow }}</span></p>{% endif %}
     <h2>Rules fired</h2>
     {% for f in rj.flags %}<div class="rule {{ f.severity }}"><span class="pill {{ f.severity }}">{{ f.severity }}</span> <code>{{ f.rule }}</code><br><span class="small">{{ f.summary }}</span></div>{% endfor %}
     {% endif %}

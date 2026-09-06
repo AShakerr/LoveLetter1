@@ -308,6 +308,47 @@ If the criteria fail, the system stays paper and the track-record page says why.
 
 **Phase 5 — live execution, gated.** Only starts when the phase 4 promotion checklist passes and the user says so explicitly. IBKRBroker adapter, IB Gateway container, the three guards, reconciliation. Accept when: a 1-share live test order round-trips with a fill and reconciliation, the kill switch halts the scheduler, and an order over the daily cap is rejected and logged.
 
+## 8d. Disclosed Flow tracker (insiders and Congress)
+
+**What it is.** A daily feed of publicly disclosed trades by two groups: corporate insiders (officers, directors, 10% holders, via SEC Form 4) and members of the US Congress (via STOCK Act periodic transaction reports). It is a *positioning* input, not a prediction: every trade is public and lagged (2 business days for Form 4, up to 45 days for Congress). It feeds the Crowd factor and the Screener; it never creates a decision on its own.
+
+**What the evidence supports, and therefore what is scored.** Opportunistic open-market *purchases* by officers and directors, especially clustered ones, carry information (Cohen, Malloy & Pomorski, *Journal of Finance* 2012; Lakonishok & Lee, *RFS* 2001). Sales, option exercises, grants, 10b5-1 plan trades and routine calendar trades do not. Congressional trades in aggregate roughly match the market; the informative subset is purchases by members whose committee assignment is relevant to the issuer's sector. The tracker scores only those subsets. Everything else is stored and shown but weighted zero.
+
+**Sources, all free.**
+
+| Feed | Source | Cadence | Notes |
+|---|---|---|---|
+| Form 4 | SEC EDGAR full-text search and daily index (`https://efts.sec.gov/LATEST/search-index?q=&forms=4` and `https://www.sec.gov/Archives/edgar/daily-index/`); parse the XML in each filing | Daily 07:00, pulls prior 2 days | Needs a `User-Agent` header with your email; 10 req/s limit. Filter to screener universe plus held names. |
+| House PTRs | Clerk of the House financial disclosure index (`https://disclosures-clerk.house.gov/FinancialDisclosure`) yearly ZIP of XML index plus per-filing PDFs | Daily | PDFs go through the existing Claude extraction pipeline with a `ptr_extract.md` prompt returning {member, date_traded, date_filed, ticker, side, amount_band, asset_type}. |
+| Senate PTRs | Senate eFD (`https://efdsearch.senate.gov/search/`) | Daily | Requires the session cookie handshake; if it blocks, fall back to the community mirror `senate-stock-watcher` JSON and mark the source. |
+| Committee map | `config/committees.yaml`: member → committees; committee → GICS sectors it is relevant to (Armed Services → Industrials/Aerospace; Energy & Commerce → Energy, Health Care, Comm Services; Financial Services/Banking → Financials; etc.) | Manual, refresh each Congress | Seed with the current 119th/120th Congress membership. |
+
+**Table.** `disclosed_trades(id, source[form4|house|senate], filer_name, filer_role, issuer_ticker, instrument_id|null, trade_date, filed_date, lag_days, side[buy|sell], asset_type[stock|option|fund|other], quantity|null, amount_low, amount_high, price|null, is_open_market, is_10b5_1, is_routine, committee_relevant, raw_url)`.
+
+**Classification rules.**
+- `is_open_market`: Form 4 transaction code P (purchase) or S (sale) only. Codes A, M, F, G, J and exercises are stored as `asset_type=other` and score zero.
+- `is_10b5_1`: the filing's footnote or checkbox says 10b5-1. Score zero.
+- `is_routine`: the same filer traded the same issuer in the same calendar month in at least 2 of the prior 3 years. Score zero. (This is the Cohen–Malloy–Pomorski rule.)
+- `committee_relevant`: the member sits on a committee mapped to the issuer's sector. Congressional trades without this flag score zero.
+- Amount bands for Congress ($1,001–$15,000 etc.) are stored as low/high; use the midpoint for sizing signals.
+
+**Signals computed daily, per instrument.**
+1. *Insider cluster buy*: ≥3 distinct officers/directors with open-market, non-routine, non-10b5-1 purchases in the trailing 30 days. Strength = count × log(total midpoint value).
+2. *Insider net flow*: (open-market buys − open-market sells) in trailing 90 days, value-weighted, as a percentile of the issuer's own 3-year history. Only the buy side moves the score; net selling is shown, not scored.
+3. *Congressional relevant buy*: ≥1 committee-relevant purchase in the trailing 60 days, with lag_days shown. Strength decays linearly to zero at 90 days from trade_date.
+4. *Congressional cluster*: ≥3 members buying the same issuer in 60 days regardless of committee. Shown as a watch flag only; not scored (this is the crowd, not the insiders).
+
+**Where it enters the score.** Inside the Crowd factor (7b), as a third component alongside positioning and surprise: in the 30–70 positioning band, an active insider cluster buy or committee-relevant congressional buy adds +1; nothing subtracts. Outside that band it is shown but not scored, for the same reason sentiment isn't. Weight of the Crowd factor stays at 10; this does not add points to the model.
+
+**Where it is shown.**
+- A "Flow" page: today's new filings for the universe, filterable by source and signal, each row linking to the raw filing. A "Watch" list of people whose trades have historically been followed by outperformance in *this* system's own data (empty until the track record exists; never seeded with folklore).
+- On every Screener row and decision page: a flow badge if any signal is active, with the filer names and dates.
+- Held names: an insider or committee-relevant *sale* cluster on a held name produces a REVIEW flag ("disclosed selling"), never a mandatory exit.
+
+**Track record hook.** Every signal is scored at 30/90 days like the screener. The Flow page shows the hit rate per signal type and per named filer once n ≥ 10. This is how you find out whether following a specific person was ever worth anything, rather than assuming it.
+
+**What it will not do.** It will not show you trades before they are public, it will not treat a sale as a signal, and it will not rank politicians by reputation. The famous names go on the Watch list only if their trades, in this system's own log, were followed by returns.
+
 ## Regime table additions
 
 Add to `config/regime_fit.yaml`:

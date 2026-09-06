@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     price_lookback_days: int = Field(default=400, alias="DESK_PRICE_LOOKBACK_DAYS")
     alphavantage_daily_budget: int = Field(default=25, alias="DESK_ALPHAVANTAGE_BUDGET")
     http_timeout_s: float = Field(default=20.0, alias="DESK_HTTP_TIMEOUT")
+    # DESK_OFFLINE=1 makes every fetcher report "skipped (offline)" instead of touching the network
+    # (tests, and a laptop without connectivity); fixtures and stored rows are still used.
+    offline: bool = Field(default=False, alias="DESK_OFFLINE")
+    # EDGAR requires a User-Agent naming you and an e-mail, e.g. "desk ahmed@example.com" (brief 8d)
+    edgar_user_agent: str | None = Field(default=None, alias="DESK_EDGAR_USER_AGENT")
     scheduler_enabled: bool = Field(default=True, alias="DESK_SCHEDULER_ENABLED")
     # The brief names claude-sonnet-4-5 "or whatever is current"; Sonnet 5 is the current Sonnet.
     claude_model: str = Field(default="claude-sonnet-5", alias="DESK_CLAUDE_MODEL")

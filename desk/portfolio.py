@@ -21,6 +21,7 @@ class Limits:
     max_single_position: float = 0.15
     max_single_theme: float = 0.35
     max_illiquid_private: float = 0.15
+    max_single_and_private: float = 0.30
     min_diversified_core_target: float = 0.40
     min_diversified_core_warn: float = 0.25
     max_crypto: float = 0.05

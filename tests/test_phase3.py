@@ -185,11 +185,14 @@ def test_scores(seeded):
         assert results[tsla.id].factors["regime"].inputs["formula"] == "0.6*current + 0.4*reverse"
         assert all(0 <= r.row.total <= 100 for r in results.values())
         # sector Consumer Discretionary neutral (2.5), region USA most preferred (5), Equities overweight (5)
-        assert results[tsla.id].factors["safra"].value == pytest.approx((2.5 + 5 + 5) / 3)
+        # = 4.17, but a single stock with no named house rating is capped at 4 (sector evidence is weaker)
+        assert results[tsla.id].factors["safra"].value == 4.0
+        assert "capped" in results[tsla.id].factors["safra"].inputs["cap"]
         assert results[nvda.id].factors["safra"].value == 5.0  # focus-list buy overrides
-        assert (
-            results[nvda.id].factors["valuation"].inputs["fundamentals"]["peg"]["score"] == 4.0
-        )  # PEG 1.1
+        peg = results[nvda.id].factors["valuation"].inputs["fundamentals"]["peg"]
+        from desk.valuation import peg_band
+
+        assert peg["score"] == peg_band(peg["value"])[0]  # recorded PEG, banded per 7c
         assert results[vusa.id].factors["valuation"].inputs["pe"]["series"] == "PE:S&P 500"
         assert (
             results[vusa.id].factors["valuation"].inputs["pe"]["n"] == 3

@@ -12,6 +12,7 @@ import yaml
 from sqlmodel import Session, select
 
 from desk.config import Settings, get_settings
+from desk.flow import flow_badge
 from desk.houseviews import all_views, current_stance
 from desk.models import (
     Decision,
@@ -25,7 +26,7 @@ from desk.models import (
 from desk.portfolio import build_portfolio
 from desk.regime import latest_regime
 from desk.regime_fit import RegimeFit
-from desk.score import ValuationContext, compute_score, three_month_return
+from desk.score import ScoreResult, ValuationContext, compute_score, three_month_return
 from desk.sources.base import utcnow
 from desk.valuation import quality_gate
 
@@ -79,6 +80,7 @@ class ScreenerConfig:
     top_n: int = 15
     anti_churn_days: int = 3
     sentiment_calls_per_day: int = 20
+    max_per_sector: int = 5
 
     @classmethod
     def load(cls, settings: Settings) -> ScreenerConfig:
@@ -95,6 +97,7 @@ class ScreenerConfig:
             "top_n",
             "anti_churn_days",
             "sentiment_calls_per_day",
+            "max_per_sector",
         ):
             if k in sc:
                 setattr(cfg, k, sc[k])
@@ -436,8 +439,12 @@ def run_screener(
             vctx=vctx,
         )
         f = vctx.values(inst.id)
-        passed, reasons = quality_gate(f, inst.sector)
+        has_fundamentals = any(v is not None for v in f.values())
+        passed, reasons = quality_gate(f, inst.sector) if has_fundamentals else (False, [])
+        if not has_fundamentals:
+            reasons = ["no fundamentals (weekly job has not populated this name)"]
         gates = {
+            "fundamentals": has_fundamentals,
             "quality": passed,
             "quality_reasons": reasons,
             "value_trap": any("value trap" in x for x in res.flags),
@@ -445,19 +452,32 @@ def run_screener(
             "fundamentals_as_of": vctx.as_of(inst.id).get("date"),
         }
         gates["passed"] = passed and not gates["value_trap"] and not gates["no_earnings"]
+        gates["reason"] = gate_reason(gates)
         scored.append((inst, res, gates))
-    scored.sort(key=lambda t: -t[1].row.total)
+    scored.sort(key=rank_key)
     held = {p.instrument.id for p in view.positions}
-    top = scored[: cfg.top_n]
+    rank_of = {inst.id: i + 1 for i, (inst, _, _) in enumerate(scored)}
+    tiebreaks = tiebreak_notes(scored)
+    top, overflow, excluded = select_top(scored, cfg.top_n, cfg.max_per_sector)
     bottom = scored[-cfg.top_n :] if len(scored) > cfg.top_n else []
-    keep = {inst.id: (inst, res, gates) for inst, res, gates in top + bottom}
-    for inst, res, gates in scored:
+    lists: dict[int, str] = {}
+    for inst, _, _ in top:
+        lists[inst.id] = "top"
+    for inst, _, _ in overflow:
+        lists.setdefault(inst.id, "overflow")
+    for inst, _, _ in bottom:
+        lists.setdefault(inst.id, "bottom")
+    for inst, _res, _gates in scored[: cfg.sentiment_calls_per_day]:
+        # kept so tomorrow's Alpha Vantage calls know the top 20
+        lists.setdefault(inst.id, "sentiment")
+    for inst, res, _gates in scored:
         if inst.id in held and res.row.total < 45:
-            keep[inst.id] = (inst, res, gates)
+            lists.setdefault(inst.id, "held_avoid")
+    keep = {inst.id: (inst, res, gates) for inst, res, gates in scored if inst.id in lists}
     for old in session.exec(select(ScreenerRow).where(ScreenerRow.date == today)).all():
         session.delete(old)
     session.commit()
-    rank_of = {inst.id: i + 1 for i, (inst, _, _) in enumerate(scored)}
+    list_rank = {inst.id: i + 1 for i, (inst, _, _) in enumerate(top)}
     for inst, res, gates in keep.values():
         session.add(
             ScreenerRow(
@@ -473,6 +493,10 @@ def run_screener(
                     "flags": res.flags,
                     "band": res.band,
                     "held": inst.id in held,
+                    "list": lists[inst.id],
+                    "list_rank": list_rank.get(inst.id),
+                    "excluded": excluded.get(inst.id),
+                    "tiebreak": tiebreaks.get(inst.id),
                     "sentiment": sentiment_source(session, inst, today),
                     "fundamentals": {k: v[0] for k, v in vctx.latest(inst.id).items()},
                     "safra": _safra_view(session, inst),
@@ -481,12 +505,92 @@ def run_screener(
             )
         )
     session.commit()
+    sectors: dict[str, int] = {}
+    for inst, _, _ in top:
+        sectors[inst.sector or "—"] = sectors.get(inst.sector or "—", 0) + 1
     return {
         "date": today.isoformat(),
         "scored": len(scored),
         "written": len(keep),
         "top": [(i.ticker, r.row.total, g["passed"]) for i, r, g in top],
+        "sectors": sectors,
+        "overflow": [(i.ticker, r.row.total, excluded.get(i.id)) for i, r, _ in overflow],
     }
+
+
+def gate_reason(gates: dict[str, Any]) -> str | None:
+    """Text for the badge: None when passed, else what gated the name out."""
+    if gates.get("passed"):
+        return None
+    reasons = list(gates.get("quality_reasons") or [])
+    if gates.get("no_earnings"):
+        reasons.append("no earnings")
+    if gates.get("value_trap"):
+        reasons.append("possible value trap")
+    return "; ".join(reasons) or "gated"
+
+
+def rank_key(t: tuple[Instrument, ScoreResult, dict[str, Any]]):
+    """Descending total; ties on the displayed integer are broken by valuation, then crowd, then the raw total."""
+    _inst, res, _gates = t
+    return (
+        -round(res.row.total),
+        -(res.factors["valuation"].effective),
+        -(res.factors["crowd"].effective),
+        -res.row.total,
+    )
+
+
+def tiebreak_notes(scored: list[tuple[Instrument, ScoreResult, dict[str, Any]]]) -> dict[int, str]:
+    """For a name that shares its displayed score with the one ranked just above it, say what separated them."""
+    out: dict[int, str] = {}
+    for prev, cur in zip(scored, scored[1:], strict=False):
+        if round(prev[1].row.total) != round(cur[1].row.total):
+            continue
+        pv, cv = prev[1].factors["valuation"].effective, cur[1].factors["valuation"].effective
+        pc, cc = prev[1].factors["crowd"].effective, cur[1].factors["crowd"].effective
+        shown = round(cur[1].row.total)
+        if pv != cv:
+            out[cur[0].id] = (
+                f"tie at {shown}: valuation {cv:.2f} vs {pv:.2f} ({prev[0].ticker}) above"
+            )
+        elif pc != cc:
+            out[cur[0].id] = (
+                f"tie at {shown}: valuation equal, crowd {cc:.2f} vs {pc:.2f} ({prev[0].ticker}) above"
+            )
+        else:
+            out[cur[0].id] = (
+                f"tie at {shown}: raw total {cur[1].row.total:.2f} vs {prev[1].row.total:.2f} ({prev[0].ticker})"
+            )
+    return out
+
+
+def select_top(
+    scored: list[tuple[Instrument, ScoreResult, dict[str, Any]]], top_n: int, max_per_sector: int
+) -> tuple[list, list, dict[int, str]]:
+    """The candidate list: the highest-ranked names that pass the gates, at most `max_per_sector` per sector.
+    Overflow = names ranked above the last candidate that were skipped, with the reason."""
+    top: list = []
+    overflow: list = []
+    excluded: dict[int, str] = {}
+    per_sector: dict[str, int] = {}
+    for inst, res, gates in scored:
+        if len(top) >= top_n:
+            break
+        sector = inst.sector or "—"
+        if not gates.get("passed"):
+            excluded[inst.id] = f"gated out: {gates.get('reason') or 'gates failed'}"
+            overflow.append((inst, res, gates))
+            continue
+        if per_sector.get(sector, 0) >= max_per_sector:
+            excluded[inst.id] = (
+                f"sector cap: {sector} already has {max_per_sector} in the top {top_n}"
+            )
+            overflow.append((inst, res, gates))
+            continue
+        per_sector[sector] = per_sector.get(sector, 0) + 1
+        top.append((inst, res, gates))
+    return top, overflow, excluded
 
 
 def _safra_view(session: Session, inst: Instrument) -> dict[str, Any] | None:
@@ -506,20 +610,19 @@ def _safra_view(session: Session, inst: Instrument) -> dict[str, Any] | None:
 
 
 def sentiment_targets(
-    session: Session, settings: Settings | None = None, today: dt.date | None = None
+    session: Session,
+    settings: Settings | None = None,
+    today: dt.date | None = None,
+    budget: int | None = None,
 ) -> list[str]:
-    """Tickers that get Alpha Vantage calls today: top N screener names by pre-sentiment score plus anything held."""
+    """Tickers that get Alpha Vantage calls today, in budget order (brief 8c): held single names first, then
+    the screener's top N by pre-sentiment score from the most recent run (yesterday's, since the screener runs
+    after the fetch). `budget` caps the list; topics are budgeted separately by the fetcher."""
     settings = settings or get_settings()
     today = today or dt.date.today()
     cfg = ScreenerConfig.load(settings)
-    rows = session.exec(
-        select(ScreenerRow).where(ScreenerRow.date == today).order_by(ScreenerRow.rank)
-    ).all()
-    top = [
-        session.get(Instrument, r.instrument_id).ticker for r in rows[: cfg.sentiment_calls_per_day]
-    ]
     held = [
-        session.get(Instrument, p.instrument_id).ticker
+        session.get(Instrument, p.instrument_id)
         for p in session.exec(
             select(Position).where(
                 Position.confirmed_by_user.is_(True),
@@ -528,18 +631,38 @@ def sentiment_targets(
             )
         ).all()
     ]
+    held_tickers = [
+        i.ticker
+        for i in held
+        if i is not None
+        and i.kind == InstrumentKind.stock
+        and (i.region == "USA" or i.screener_member)
+    ]
+    latest = session.exec(
+        select(ScreenerRow).where(ScreenerRow.date <= today).order_by(ScreenerRow.date.desc())
+    ).first()
+    top: list[str] = []
+    if latest is not None:
+        rows = session.exec(
+            select(ScreenerRow).where(ScreenerRow.date == latest.date).order_by(ScreenerRow.rank)
+        ).all()
+        top = [
+            session.get(Instrument, r.instrument_id).ticker
+            for r in rows
+            if r.rank <= cfg.sentiment_calls_per_day
+        ]
     out: list[str] = []
-    for t in top + held:
+    for t in held_tickers + top:
         if t not in out:
             out.append(t)
-    return out
+    return out[:budget] if budget is not None else out
 
 
 # ------------------------------------------------------------------------------------------- read model
 def days_in_top(
     session: Session, instrument_id: int, today: dt.date, top_n: int, lookback: int = 10
 ) -> int:
-    """Consecutive trading days (screener runs) the name has been in the top N, ending today."""
+    """Consecutive trading days (screener runs) the name has been in the candidate list, ending today."""
     dates = sorted(
         {r.date for r in session.exec(select(ScreenerRow).where(ScreenerRow.date <= today)).all()},
         reverse=True,
@@ -551,7 +674,13 @@ def days_in_top(
                 ScreenerRow.date == d, ScreenerRow.instrument_id == instrument_id
             )
         ).first()
-        if row is None or row.rank > top_n:
+        if row is None:
+            break
+        if (
+            (row.factors_json or {}).get("list") not in (None, "top")
+            or row.rank > top_n
+            and not (row.factors_json or {}).get("list_rank")
+        ):
             break
         streak += 1
     return streak
@@ -567,7 +696,7 @@ def page_rows(
         return {"date": None, "candidates": [], "avoid": [], "cfg": cfg}
     day = today or rows[0].date
     rows = [r for r in rows if r.date == day]
-    out_c, out_a = [], []
+    out_c, out_o, out_a = [], [], []
     for r in sorted(rows, key=lambda r: r.rank):
         inst = session.get(Instrument, r.instrument_id)
         fj = r.factors_json or {}
@@ -581,6 +710,7 @@ def page_rows(
         item = {
             "row": r,
             "inst": inst,
+            "flow": flow_badge(session, inst.id, day),
             "factors": fj.get("factors") or {},
             "notes": fj.get("notes") or [],
             "flags": fj.get("flags") or [],
@@ -589,22 +719,40 @@ def page_rows(
             "fundamentals": fj.get("fundamentals") or {},
             "safra": fj.get("safra"),
             "held": fj.get("held"),
+            "list": fj.get("list"),
+            "list_rank": fj.get("list_rank"),
+            "excluded": fj.get("excluded"),
+            "tiebreak": fj.get("tiebreak"),
             "streak": streak,
             "can_propose": r.total >= 75
             and port_fit >= 3
+            and fj.get("list") == "top"
             and (r.gates_json or {}).get("passed")
             and streak >= cfg.anti_churn_days
             and proposed is None
             and inst.tradable,
             "proposed": proposed,
         }
-        if r.rank <= cfg.top_n and (r.gates_json or {}).get("passed"):
+        which = fj.get("list")
+        if which == "top":
             out_c.append(item)
-        elif r.rank <= cfg.top_n:
-            out_c.append(item)  # in the top 15 but gated: shown with the reason
-        else:
+        elif which == "overflow":
+            out_o.append(item)
+        elif which in ("bottom", "held_avoid"):
             out_a.append(item)
-    return {"date": day, "candidates": out_c, "avoid": out_a, "cfg": cfg}
+        # "sentiment" rows exist only to steer tomorrow's Alpha Vantage calls
+    out_c.sort(key=lambda it: it["list_rank"] or 0)
+    sectors: dict[str, int] = {}
+    for it in out_c:
+        sectors[it["inst"].sector or "—"] = sectors.get(it["inst"].sector or "—", 0) + 1
+    return {
+        "date": day,
+        "candidates": out_c,
+        "overflow": out_o,
+        "avoid": out_a,
+        "sectors": sectors,
+        "cfg": cfg,
+    }
 
 
 def propose_buy(
@@ -645,33 +793,15 @@ def propose_buy(
     cash = view.cash_eur / view.total_eur if view.total_eur else 0.0
     size = max(0.0, min(limits.max_single_position, limits.max_single_theme - theme_w, 0.05, cash))
     stop = cfg.stop_loss.get(inst.kind.value) or 0.18
-    kill = {
-        "thesis": f"Screener candidate on {row.date}: rank {row.rank}, score {row.total:.0f}. Quality gates passed. "
-        f"Thesis to be written by the user before execution.",
-        "kills": [
-            {
-                "predicate": f"close('{inst.ticker}') < {1 - stop:.2f} * avg_cost('{inst.ticker}')",
-                "severity": "mandatory",
-                "note": f"{stop:.0%} stop from average cost (section 8 default for {inst.kind.value})",
-            },
-            {
-                "predicate": f"house_view('sector', '{inst.sector}').stance == 'least_preferred'",
-                "severity": "mandatory",
-                "note": "Safra moves the sector to least preferred",
-            }
-            if inst.sector
-            else None,
-            {
-                "human": "Score falls below 45 on two consecutive runs, or a quality gate fails at the weekly refresh",
-                "severity": "review",
-            },
-        ],
-        "add_blocked_while": None,
-        "pre_condition": None,
-        "theme": inst.theme,
-        "tradable": inst.tradable,
-    }
-    kill["kills"] = [k for k in kill["kills"] if k]
+    from desk.kill_conditions import draft_kill_conditions
+    from desk.score import _latest_price
+
+    px = _latest_price(session, inst.id)
+    kill = draft_kill_conditions(session, inst, px.close if px else None, stop, settings)
+    kill["thesis"] = (
+        f"Screener candidate on {row.date}: rank {row.rank}, score {row.total:.0f}. Quality gates passed. "
+        + kill["thesis"]
+    )
     regime = latest_regime(session) or Regime(
         date=today,
         label="regime unknown",

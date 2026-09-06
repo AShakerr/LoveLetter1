@@ -201,3 +201,64 @@ def kill_block(position: Position) -> dict[str, Any] | None:
             "theme": None,
         }
     return None
+
+
+# ------------------------------------------------------------------------------------ drafting (section 8)
+def draft_kill_conditions(
+    session: Session,
+    inst: Instrument,
+    ref_price: float | None,
+    stop: float,
+    settings: Settings | None = None,
+) -> dict[str, Any]:
+    """Instrument-specific kill block from the section 8 template, for a BUY with no seed entry:
+    stop from the entry reference price, house sector leaving most preferred, focus-list rating leaving buy,
+    then the theme's human checks from config/kill_templates.yaml."""
+    from desk.houseviews import current_stance
+
+    settings = settings or get_settings()
+    path = settings.config_dir / "kill_templates.yaml"
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
+    kills: list[dict[str, Any]] = []
+    if ref_price:
+        kills.append(
+            {
+                "predicate": f"close('{inst.ticker}') < {(1 - stop) * ref_price:.2f}",
+                "severity": "mandatory",
+                "note": f"{stop:.0%} stop from the entry reference price {ref_price:.2f}",
+            }
+        )
+    sector = current_stance(session, "sector", inst.sector) if inst.sector else None
+    if sector is not None and sector.view.stance in ("most_preferred", "overweight"):
+        kills.append(
+            {
+                "predicate": f"house_view('sector', '{inst.sector}').stance != '{sector.view.stance}'",
+                "severity": "mandatory",
+                "note": f"house sector {inst.sector} leaves {sector.view.stance} ({sector.report.date})",
+            }
+        )
+    rating = current_stance(session, "stock", inst.ticker)
+    if rating is not None and rating.view.stance in ("buy", "strong_buy"):
+        kills.append(
+            {
+                "predicate": f"house_view('stock', '{inst.ticker}').stance != '{rating.view.stance}'",
+                "severity": "mandatory",
+                "note": f"Safra/CFRA focus-list rating changes from {rating.view.stance} ({rating.report.date})",
+            }
+        )
+    for row in (doc.get("themes") or {}).get(inst.theme or "", []) + (doc.get("default") or []):
+        kills.append({"human": row["human"], "severity": row.get("severity", "review")})
+    thesis = (
+        f"{inst.name}: house {'stock rating ' + rating.view.stance if rating else 'sector view'}"
+        f"{' (' + sector.view.stance + ')' if sector else ''}; theme {inst.theme}. "
+        "Drafted from config/kill_templates.yaml; edit the thesis before approving."
+    )
+    return {
+        "thesis": thesis,
+        "kills": kills,
+        "add_blocked_while": None,
+        "pre_condition": None,
+        "theme": inst.theme,
+        "tradable": inst.tradable,
+        "drafted": True,
+    }

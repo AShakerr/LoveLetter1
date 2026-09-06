@@ -155,6 +155,9 @@ class FetchOutcome:
     error: str | None = None
     started_at: datetime = field(default_factory=utcnow)
     finished_at: datetime | None = None
+    raw: Any = (
+        None  # the payload behind the observations (fetchers whose rows are not time series use it)
+    )
 
 
 class Fetcher(ABC):
@@ -208,6 +211,8 @@ class Fetcher(ABC):
     def run(self) -> FetchOutcome:
         started = utcnow()
         ok, reason = self.enabled()
+        if ok and getattr(self.settings, "offline", False):
+            ok, reason = False, "offline (DESK_OFFLINE=1)"
         if not ok:
             return FetchOutcome(self.name, [], "skipped", reason, started, utcnow())
         try:
@@ -231,7 +236,7 @@ class Fetcher(ABC):
                 return FetchOutcome(
                     self.name, [], "failed", f"{err}; cache unparseable: {pexc}", started, utcnow()
                 )
-            return FetchOutcome(self.name, obs, "cached", err, started, utcnow())
+            return FetchOutcome(self.name, obs, "cached", err, started, utcnow(), raw=cached)
         try:
             obs = self.parse(raw)
         except Exception as exc:  # noqa: BLE001
@@ -239,7 +244,7 @@ class Fetcher(ABC):
             log.exception("%s: %s", self.name, err)
             return FetchOutcome(self.name, [], "failed", err, started, utcnow())
         self._write_cache(raw)
-        return FetchOutcome(self.name, obs, "ok", None, started, utcnow())
+        return FetchOutcome(self.name, obs, "ok", None, started, utcnow(), raw=raw)
 
 
 def http_get_json(

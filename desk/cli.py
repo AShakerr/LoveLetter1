@@ -140,6 +140,23 @@ def aaii_backfill_cmd(path: str, verbose: bool = False) -> None:
     typer.echo(f"AAII backfill: {len(obs)} weekly readings parsed; {dict(counts)}")
 
 
+@app.command()
+def flow(fetch: bool = True, verbose: bool = False) -> None:
+    """Form 4 insider flow (brief 8d): fetch the last two business days for the universe, store, compute signals."""
+    _log(verbose)
+    from desk.db import init_db, session_scope
+    from desk.flow import compute_signals, run_flow_daily
+
+    settings = get_settings()
+    if fetch:
+        typer.echo(json.dumps(run_flow_daily(settings), indent=1, default=str))
+        return
+    init_db(settings)
+    with session_scope(settings) as s:
+        sigs = compute_signals(s)
+    typer.echo(f"signals recomputed from stored trades: {len(sigs)}")
+
+
 @app.command("kill-conditions")
 def kill_conditions_cmd() -> None:
     """Attach docs/seed/kill_conditions_*.yaml to open positions."""

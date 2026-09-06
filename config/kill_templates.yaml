@@ -1,0 +1,36 @@
+# Kill-condition template (docs/BRIEF.md section 8) used when a BUY is drafted for a name that has no entry in the
+# seed kill file. Machine-checkable rows are generated in code (stop from the entry price, house sector leaving
+# most preferred, focus-list rating leaving buy). The rows below are the human checks per theme; edit freely.
+default:
+  - human: "Score below 45 on two consecutive runs, or a quality gate fails at the weekly fundamentals refresh"
+    severity: review
+themes:
+  ai_capex:
+    - human: "Hyperscaler capex guidance cut (Microsoft, Alphabet, Amazon, Meta) at a quarterly print, or two of them guide flat"
+      severity: mandatory
+    - human: "Export-control change that removes a top-3 end market"
+      severity: review
+  energy:
+    - human: "Strait of Hormuz reopens and Brent settles below $80 for 10 sessions"
+      severity: review
+  gold:
+    - human: "Safra cuts the year-end gold target below spot"
+      severity: mandatory
+  materials_copper:
+    - human: "Grid-capex or EV build rates fall; copper inventories rise for two consecutive months"
+      severity: review
+  industrials:
+    - human: "ISM manufacturing below 48 for two months while the name's backlog shrinks"
+      severity: review
+  us_broad:
+    - human: "Safra moves USA from most preferred, or the S&P target drops below spot"
+      severity: mandatory
+  eu_broad:
+    - human: "Safra moves Europe to least preferred"
+      severity: mandatory
+  em_broad:
+    - human: "Safra moves Emerging Markets to least preferred, or DXY breaks above 105"
+      severity: review
+  ev_auto:
+    - human: "Deliveries fall year over year for two quarters"
+      severity: review

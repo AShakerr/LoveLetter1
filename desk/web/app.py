@@ -466,6 +466,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/decisions/{decision_id}", response_class=HTMLResponse)
     def decision_detail(request: Request, decision_id: int, flash: str | None = None):
+        from desk.flow import flow_badge
+
         with session_scope(settings) as session:
             d = session.get(Decision, decision_id)
             if d is None:
@@ -475,8 +477,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return templates.TemplateResponse(
                 request,
                 "decision.html",
-                _base_ctx(request, d=d, inst=inst, score=score, flash=flash, active="decisions"),
+                _base_ctx(
+                    request,
+                    d=d,
+                    inst=inst,
+                    score=score,
+                    flow=flow_badge(session, inst.id, d.date),
+                    flash=flash,
+                    active="decisions",
+                ),
             )
+
+    @app.get("/flow", response_class=HTMLResponse)
+    def flow_page(
+        request: Request,
+        source: str | None = None,
+        signal: str | None = None,
+        flash: str | None = None,
+    ):
+        from desk.flow import page_data
+
+        with session_scope(settings) as session:
+            data = page_data(session, source=source or None, signal=signal or None)
+            return templates.TemplateResponse(
+                request, "flow.html", _base_ctx(request, data=data, flash=flash, active="flow")
+            )
+
+    @app.post("/flow/run")
+    def flow_run():
+        from desk.flow import run_flow_daily
+
+        res = run_flow_daily(settings)
+        msg = f"Form 4: {res['status']}, {res['rows']} new trades, {res['signals']} signals"
+        if res.get("error"):
+            msg += f" ({res['error']})"
+        return RedirectResponse(url=f"/flow?flash={quote_plus(msg)}", status_code=303)
 
     @app.post("/decisions/{decision_id}/respond")
     def decision_respond(decision_id: int, status: str = Form(...), note: str = Form("")):

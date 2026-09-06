@@ -16,7 +16,7 @@ from desk.crowd import consensus_gap, crowd_factor
 from desk.fundamentals import history_median, latest_fundamentals, sector_stats
 from desk.houseviews import ViewRow, all_views
 from desk.models import Instrument, InstrumentKind, NewsSentiment, Observation, Price, Regime, Score
-from desk.portfolio import PortfolioView
+from desk.portfolio import Limits, PortfolioView
 from desk.regime_fit import RegimeFit
 from desk.valuation import ValuationResult, score_etf, score_stock
 
@@ -50,6 +50,9 @@ CYCLICAL_SECTORS = {
     "Consumer Cyclical",
     "Basic Materials",
 }
+SECTOR_ONLY_CAP = (
+    4.0  # a single stock with no named house rating cannot score 5 on sector evidence alone
+)
 SCORABLE_KINDS = {
     InstrumentKind.stock,
     InstrumentKind.etf,
@@ -223,7 +226,17 @@ def f_safra(inst: Instrument, views: list[ViewRow], today: dt.date) -> Factor:
             elif r.direction == "downgrade":
                 adj -= 0.5
     inputs["recent_change_adjustment"] = adj
-    return Factor(clamp(base + adj), inputs)
+    value = clamp(base + adj)
+    if (
+        "stock_rating" not in inputs
+        and inst.kind == InstrumentKind.stock
+        and value > SECTOR_ONLY_CAP
+    ):
+        inputs["cap"] = (
+            f"no house stock rating: sector/region view capped at {SECTOR_ONLY_CAP:.0f}/5"
+        )
+        value = SECTOR_ONLY_CAP
+    return Factor(value, inputs)
 
 
 def f_regime(inst: Instrument, regime: Regime | None, fit: RegimeFit | None) -> Factor:
@@ -245,39 +258,126 @@ def f_regime(inst: Instrument, regime: Regime | None, fit: RegimeFit | None) -> 
     return Factor(clamp(value), inputs)
 
 
-def f_portfolio(session: Session, inst: Instrument, view: PortfolioView, today: dt.date) -> Factor:
+def _proxy_instrument(
+    session: Session, inst: Instrument, universe_cfg: dict[str, Any] | None
+) -> Instrument | None:
+    """Price series that stands in for an instrument with no prices of its own (a pot -> its index_ticker)."""
+    if _latest_price(session, inst.id) is not None:
+        return inst
+    proxy = (universe_cfg or {}).get("index_ticker")
+    if proxy:
+        return session.exec(select(Instrument).where(Instrument.ticker == proxy)).first()
+    return None
+
+
+def f_portfolio(
+    session: Session,
+    inst: Instrument,
+    view: PortfolioView,
+    today: dt.date,
+    limits: Limits | None = None,
+    valuation_cfg: dict[str, dict[str, Any]] | None = None,
+) -> Factor:
+    """Marginal diversification (brief section 7, as amended in the 2026-09-06 review):
+    - broad index ETFs score highest while the diversified core is below its floor (5 under the 25% warn line,
+      4 under the 40% target, 3 above it);
+    - single names and private lines start at 3 and drop to 1 while single + private already exceeds the
+      max_single_and_private ceiling; a theme already above 35% also scores 1, the largest theme 2;
+    - the 90-day return correlation against the two largest holdings (through their price proxies, e.g. the
+      commodities pot via GC=F) is subtracted: 2 x the highest positive correlation.
+    Every input is recorded so the reasoning can show why."""
+    limits = limits or Limits()
     themes = {k: v for k, v in view.by_theme.items() if k != "cash"}
     if not themes:
         return Factor(None, {"note": "empty portfolio"}, "empty portfolio; neutral 2.5 used")
     top_theme, top_w = max(themes.items(), key=lambda kv: kv[1])
     theme = inst.theme or "unassigned"
-    if theme != top_theme:
-        base, why = 5.0, f"adding {theme} reduces the largest theme ({top_theme} {top_w:.0%})"
-    elif top_w > 0.35:
-        base, why = 1.0, f"{theme} already {top_w:.0%} (> 35%)"
-    else:
-        base, why = 3.0, f"{theme} is the largest theme at {top_w:.0%}"
+    theme_w = themes.get(theme, 0.0)
+    core_w = sum(v for k, v in themes.items() if k in limits.core_themes)
+    single_private_w = sum(
+        p.weight
+        for p in view.positions
+        if p.instrument.kind in (InstrumentKind.stock, InstrumentKind.private)
+    )
+    is_core = inst.kind == InstrumentKind.etf and theme in limits.core_themes
+    is_single = inst.kind in (InstrumentKind.stock, InstrumentKind.private)
     inputs: dict[str, Any] = {
+        "theme": theme,
+        "theme_weight": round(theme_w, 4),
         "largest_theme": top_theme,
         "largest_theme_weight": round(top_w, 4),
-        "base": base,
-        "why": why,
+        "core_weight": round(core_w, 4),
+        "core_floor": limits.min_diversified_core_warn,
+        "core_target": limits.min_diversified_core_target,
+        "single_plus_private_weight": round(single_private_w, 4),
+        "single_plus_private_max": limits.max_single_and_private,
     }
-    largest = None
-    for p in view.positions:
-        if p.instrument.id != inst.id and _latest_price(session, p.instrument.id) is not None:
-            largest = p
-            break
-    penalty = 0.0
-    if largest is not None:
-        since = today - dt.timedelta(days=90)
-        rho = correlation(
-            _returns(session, inst.id, since), _returns(session, largest.instrument.id, since)
+    if is_core:
+        if core_w < limits.min_diversified_core_warn:
+            base, why = (
+                5.0,
+                (
+                    f"broad index ETF while the diversified core is {core_w:.0%}, below the "
+                    f"{limits.min_diversified_core_warn:.0%} floor"
+                ),
+            )
+        elif core_w < limits.min_diversified_core_target:
+            base, why = (
+                4.0,
+                (
+                    f"broad index ETF while the core is {core_w:.0%}, below the "
+                    f"{limits.min_diversified_core_target:.0%} target"
+                ),
+            )
+        else:
+            base, why = 3.0, f"broad index ETF with the core already at {core_w:.0%}"
+    elif theme_w > limits.max_single_theme:
+        base, why = 1.0, f"{theme} already {theme_w:.0%} (> {limits.max_single_theme:.0%})"
+    elif theme == top_theme:
+        base, why = 2.0, f"{theme} is already the largest theme at {top_w:.0%}"
+    elif is_single and single_private_w > limits.max_single_and_private:
+        base, why = (
+            1.0,
+            (
+                f"single name while single + private is {single_private_w:.0%} "
+                f"(> {limits.max_single_and_private:.0%}); it widens the core gap ({core_w:.0%} core)"
+            ),
         )
-        inputs["largest_holding"] = largest.instrument.ticker
-        inputs["corr_90d"] = None if rho is None else round(rho, 3)
-        if rho is not None:
-            penalty = 2.0 * max(rho, 0.0)
+    else:
+        base, why = (
+            3.0,
+            (
+                f"{theme} at {theme_w:.0%} does not touch the largest theme ({top_theme} {top_w:.0%}); "
+                f"core stays {core_w:.0%}"
+            ),
+        )
+    inputs["base"], inputs["why"] = base, why
+    # correlation against the two largest holdings, through price proxies where the line has no prices
+    since = today - dt.timedelta(days=90)
+    mine = _returns(session, inst.id, since)
+    corr: list[dict[str, Any]] = []
+    for p in sorted(view.positions, key=lambda p: -(p.value_eur or 0)):
+        if p.instrument.kind == InstrumentKind.cash or p.instrument.id == inst.id:
+            continue
+        if len(corr) >= 2:
+            break
+        cfg = (valuation_cfg or {}).get(p.instrument.ticker)
+        proxy = _proxy_instrument(session, p.instrument, cfg)
+        entry: dict[str, Any] = {"holding": p.instrument.ticker, "weight": round(p.weight, 4)}
+        if proxy is None:
+            entry["note"] = "no price series or proxy; not penalised"
+            corr.append(entry)
+            continue
+        if proxy.id != p.instrument.id:
+            entry["proxy"] = proxy.ticker
+        rho = correlation(mine, _returns(session, proxy.id, since))
+        entry["corr_90d"] = None if rho is None else round(rho, 3)
+        if rho is None:
+            entry["note"] = "fewer than 20 overlapping return days"
+        corr.append(entry)
+    inputs["correlations"] = corr
+    rhos = [c["corr_90d"] for c in corr if c.get("corr_90d") is not None]
+    penalty = 2.0 * max(max(rhos), 0.0) if rhos else 0.0
     inputs["correlation_penalty"] = round(penalty, 3)
     return Factor(clamp(base - penalty), inputs)
 
@@ -361,9 +461,15 @@ def f_valuation(
     if t_score is not None:
         inputs["target"] = t_inputs
         return Factor(t_score, inputs), vres
+    if inst.kind == InstrumentKind.stock:
+        return Factor(
+            None,
+            {**inputs, "note": "no fundamentals"},
+            "no fundamentals (weekly job has not populated this name); neutral 2.5 used",
+        ), vres
     return Factor(
         None,
-        {**inputs, "note": "no valuation reference (no fundamentals, P/E series or target)"},
+        {**inputs, "note": "no valuation reference (no P/E series or target)"},
         "no valuation reference; neutral 2.5 used",
     ), vres
 
@@ -430,7 +536,7 @@ def f_crowd(session: Session, inst: Instrument, today: dt.date) -> Factor:
     inputs["basis"] = res.note
     if res.value is None:
         return Factor(None, inputs, res.note)
-    return Factor(clamp(res.value), inputs)
+    return Factor(clamp(res.value), inputs, res.note if res.incomplete else None)
 
 
 def f_season(inst: Instrument, today: dt.date) -> Factor:
@@ -476,12 +582,14 @@ def compute_score(
     valuation_cfg: dict[str, Any] | None,
     today: dt.date,
     vctx: ValuationContext | None = None,
+    limits: Limits | None = None,
+    universe_valuation: dict[str, dict[str, Any]] | None = None,
 ) -> ScoreResult:
     val_factor, vres = f_valuation(session, inst, valuation_cfg, views, vctx)
     factors = {
         "safra": f_safra(inst, views, today),
         "regime": f_regime(inst, regime, fit),
-        "portfolio": f_portfolio(session, inst, view, today),
+        "portfolio": f_portfolio(session, inst, view, today, limits, universe_valuation),
         "valuation": val_factor,
         "momentum": f_momentum(session, inst, universe_returns, today),
         "crowd": f_crowd(session, inst, today),
@@ -581,6 +689,7 @@ def score_universe(
         universe if universe is not None else load_universe(settings.config_dir / "universe.yaml")
     )
     val_cfg = {u["ticker"]: u.get("valuation") for u in universe}
+    limits = Limits.load(settings.config_dir / "limits.yaml")
     fit = RegimeFit.load(settings.config_dir / "regime_fit.yaml")
     views = all_views(session)
     vctx = ValuationContext(session, today)
@@ -611,6 +720,8 @@ def score_universe(
             valuation_cfg=val_cfg.get(inst.ticker),
             today=today,
             vctx=vctx,
+            limits=limits,
+            universe_valuation=val_cfg,
         )
         if persist:
             _upsert(session, res, inst, today)

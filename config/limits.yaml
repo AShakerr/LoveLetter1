@@ -2,6 +2,8 @@
 max_single_position: 0.15
 max_single_theme: 0.35
 max_illiquid_private: 0.15
+# single names plus private lines together (portfolio-fit factor penalises new single names above this)
+max_single_and_private: 0.30
 min_diversified_core_target: 0.40
 min_diversified_core_warn: 0.25
 # themes that count as diversified core (broad index ETFs)

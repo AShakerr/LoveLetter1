@@ -73,6 +73,7 @@ def load_fixtures(settings: Settings, fixtures_dir: Path | None = None) -> list[
             load_fixture_screener_prices(session, settings, fixtures_dir / "screener_prices.json")
         )
         summary.append(load_fixture_fundamentals(session, fixtures_dir / "fundamentals.json"))
+        summary.append(load_fixture_form4(session, fixtures_dir / "form4.json"))
         from desk.events import load_events_config
 
         summary.append(
@@ -134,3 +135,20 @@ def load_fixture_screener_prices(session, settings, path: Path) -> dict:
         "status": "ok",
         "rows": sum(v for k, v in counts.items() if not k.startswith("skipped")),
     }
+
+
+def load_fixture_form4(session, path: Path) -> dict:
+    """tests/fixtures/form4.json: the Form4Fetcher raw payload; rows are stored through desk.flow.store_trades
+    and the day's signals recomputed."""
+    import datetime as dt
+
+    from desk.flow import compute_signals, store_trades
+    from desk.sources.form4 import trades_from_raw
+
+    if not path.exists():
+        return {"source": "form4", "status": "missing", "rows": 0}
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    counts = store_trades(session, trades_from_raw(raw))
+    as_of = dt.date.fromisoformat(raw["as_of"]) if raw.get("as_of") else dt.date.today()
+    compute_signals(session, as_of)
+    return {"source": "form4", "status": "ok", "rows": counts["inserted"], "counts": counts}

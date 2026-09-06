@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}desk · flow{% endblock %}
+{% block content %}
+<section class="toolbar">
+  <form method="get" action="/flow" style="display:inline">
+    <select name="source" onchange="this.form.submit()">
+      <option value="" {% if not data.source %}selected{% endif %}>all sources</option>
+      <option value="form4" {% if data.source == 'form4' %}selected{% endif %}>Form 4 (insiders)</option>
+      <option value="house" {% if data.source == 'house' %}selected{% endif %}>House PTRs</option>
+      <option value="senate" {% if data.source == 'senate' %}selected{% endif %}>Senate PTRs</option>
+    </select>
+    <select name="signal" onchange="this.form.submit()">
+      <option value="" {% if not data.signal %}selected{% endif %}>any signal</option>
+      {% for k, v in data.signal_labels.items() %}<option value="{{ k }}" {% if data.signal == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+    </select>
+  </form>
+  <form method="post" action="/flow/run" style="display:inline"><button type="submit">Fetch Form 4 now</button></form>
+  <span class="muted small">last {{ data.days }} days of filings for the screener universe plus held names · {{ data.counts.filings }} filings · {{ data.counts.trades }} transactions · {{ data.counts.open_market_buys }} open-market non-routine buys · {{ data.counts.scored_signals }} scored signals</span>
+</section>
+<p class="muted small">Disclosed flow is positioning, not prediction: every trade here is public and lagged (2 business days for Form 4, up to 45 days for Congress). Only opportunistic open-market purchases by officers and directors, clustered, and committee-relevant congressional purchases are scored. Sales, option exercises, grants, 10b5-1 plan trades and routine calendar trades are stored and shown at weight zero. Nothing here creates a decision.</p>
+
+<section>
+  <h2>Active signals <span class="muted">· {{ data.signals[0].date if data.signals else '—' }}</span></h2>
+  {% if data.signals %}
+  <table class="runs"><thead><tr><th>Ticker</th><th>Signal</th><th>Strength</th><th>Scored</th><th>Detail</th></tr></thead><tbody>
+  {% for s in data.signals %}{% set i = data.inst.get(s.instrument_id) %}
+    <tr>
+      <td><strong>{{ i.ticker if i else s.instrument_id }}</strong> <span class="muted small">{{ i.name if i else '' }}</span></td>
+      <td><span class="pill {% if s.signal == 'insider_sale_cluster' %}review{% elif s.scored %}ok{% else %}cached{% endif %}">{{ data.signal_labels.get(s.signal, s.signal) }}</span></td>
+      <td class="mono">{{ '%.1f' % s.strength if s.strength is not none else '—' }}</td>
+      <td class="small">{{ 'yes' if s.scored else 'no' }}</td>
+      <td class="small muted">{% set d = s.detail_json or {} %}{% if d.filers %}{{ d.n }} filers: {{ d.filers | join(', ') }} · last trade {{ d.last_trade }} · total ${{ '{:,.0f}'.format(d.total_value or 0) }}{% elif d.net_90d is defined %}net 90d ${{ '{:,.0f}'.format(d.net_90d) }}{% if d.percentile is not none %} · P{{ d.percentile }} of own 3y range{% endif %}{% endif %}{% if d.note %} · {{ d.note }}{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody></table>
+  {% else %}<p class="muted">No active signal. A cluster needs three distinct officers or directors buying on the open market within 30 days.</p>{% endif %}
+</section>
+
+<section>
+  <h2>New filings</h2>
+  {% if data.rows %}
+  <table class="runs small"><thead><tr><th>Filed</th><th>Traded</th><th>Lag</th><th>Ticker</th><th>Filer</th><th>Role</th><th>Side</th><th>Code</th><th>Qty</th><th>Price</th><th>Value</th><th>Scoring</th><th>Filing</th></tr></thead><tbody>
+  {% for r in data.rows %}{% set t = r.t %}
+    <tr class="{% if r.scored %}pass{% endif %}">
+      <td class="mono">{{ t.filed_date }}</td>
+      <td class="mono">{{ t.trade_date }}</td>
+      <td class="mono">{{ t.lag_days }}d</td>
+      <td><strong>{{ t.issuer_ticker }}</strong>{% if r.inst and r.inst.screener_member %} <span class="muted">{{ r.inst.sector or '' }}</span>{% endif %}{% for s in r.signals %} <span class="pill {% if s.signal == 'insider_sale_cluster' %}review{% elif s.scored %}ok{% else %}cached{% endif %}" title="{{ s.detail_json | tojson }}">{{ data.signal_labels.get(s.signal, s.signal) }}</span>{% endfor %}</td>
+      <td>{{ t.filer_name }}</td>
+      <td class="muted">{{ t.filer_role or '—' }}</td>
+      <td><span class="pill {% if t.side == 'buy' %}ok{% else %}review{% endif %}">{{ t.side }}</span></td>
+      <td class="mono" title="{{ t.asset_type }}">{{ t.transaction_code or '—' }}{% if t.is_10b5_1 %} <span class="pill cached">10b5-1</span>{% endif %}{% if t.is_routine %} <span class="pill cached">routine</span>{% endif %}</td>
+      <td class="mono">{{ '{:,.0f}'.format(t.quantity) if t.quantity is not none else '—' }}</td>
+      <td class="mono">{{ '%.2f' % t.price if t.price is not none else '—' }}</td>
+      <td class="mono">{{ '${:,.0f}'.format(r.value) if r.value is not none else '—' }}</td>
+      <td class="small {% if r.scored %}green{% else %}muted{% endif %}">{{ 'counts toward a signal' if r.scored else r.why_zero }}</td>
+      <td><a href="{{ t.raw_url }}" target="_blank" rel="noopener">EDGAR</a></td>
+    </tr>
+  {% endfor %}
+  </tbody></table>
+  {% else %}<p class="muted">No filings stored for the last {{ data.days }} days. Run the fetch (needs DESK_EDGAR_USER_AGENT with your e-mail) or load the recorded fixture.</p>{% endif %}
+</section>
+
+<section>
+  <h2>Watch list <span class="muted">· people whose trades were followed by outperformance in this system's own log</span></h2>
+  {% if data.watch %}
+  <ul>{% for w in data.watch %}<li>{{ w }}</li>{% endfor %}</ul>
+  {% else %}<p class="muted">Empty. It fills only from this system's own 30/90-day scoring of each filer's trades (n ≥ 10), never from reputation.</p>{% endif %}
+</section>
+{% endblock %}

@@ -15,13 +15,16 @@
 {% macro row(it) %}
 <details class="srow {% if it.gates.passed %}pass{% else %}gated{% endif %}">
   <summary>
-    <span class="mono rank">#{{ it.row.rank }}</span>
+    <span class="mono rank" title="global rank {{ it.row.rank }} of the scored universe">{% if it.list_rank %}#{{ it.list_rank }}&nbsp;<span class="muted">r{{ it.row.rank }}</span>{% else %}r{{ it.row.rank }}{% endif %}</span>
     <strong>{{ it.inst.ticker }}</strong> <span class="muted small">{{ it.inst.name }} · {{ it.inst.sector or '—' }}{% if it.held %} · <span class="pill">held</span>{% endif %}</span>
     <span class="mono score">{{ '%.0f' % it.row.total }}</span>
     <span class="pill band-{{ it.factors.get('safra') and (it.row.total >= 75 and 'act' or it.row.total >= 60 and 'candidate' or it.row.total >= 45 and 'watch' or 'avoid') }}">{{ it.row.total >= 75 and 'act' or it.row.total >= 60 and 'candidate' or it.row.total >= 45 and 'watch' or 'avoid' }}</span>
-    {% if it.gates.passed %}<span class="pill ok">gates passed</span>{% else %}<span class="pill review" title="{{ (it.gates.quality_reasons or []) | join('; ') }}">gated</span>{% endif %}
-    {% for f in it.flags %}<span class="pill failed">{{ f }}</span>{% endfor %}
+    {% if it.gates.passed %}<span class="pill ok">gates passed</span>{% else %}<span class="pill failed">gated out: {{ it.gates.reason or ((it.gates.quality_reasons or []) | join('; ')) or 'gates failed' }}</span>{% endif %}
+    {% if it.excluded and not it.excluded.startswith('gated out') %}<span class="pill review">{{ it.excluded }}</span>{% endif %}
+    {% if it.tiebreak %}<span class="muted small" title="ties on the displayed score are broken by valuation, then crowd">{{ it.tiebreak }}</span>{% endif %}
+    {% for f in it.flags %}{% if it.gates.passed or 'value trap' not in f %}<span class="pill failed">{{ f }}</span>{% endif %}{% endfor %}
     {% if it.sentiment.level == 'sector' %}<span class="pill cached">sector-level sentiment only</span>{% endif %}
+    {% if it.flow %}<span class="pill {% if 'selling' in it.flow %}review{% else %}ok{% endif %}" title="disclosed flow (brief 8d)">flow: {{ it.flow }}</span>{% endif %}
     <span class="muted small">top-{{ data.cfg.top_n }} streak {{ it.streak }}d</span>
     {% if it.proposed %}<a class="pill status-pending" href="/decisions/{{ it.proposed.id }}">proposed #{{ it.proposed.id }}</a>
     {% elif it.can_propose %}<form method="post" action="/screener/propose" style="display:inline"><input type="hidden" name="instrument_id" value="{{ it.inst.id }}"><button type="submit" class="tiny">Propose BUY</button></form>{% endif %}
@@ -29,7 +32,7 @@
   <div class="sbody">
     <table class="runs small"><thead><tr><th>Factor</th><th>Score</th><th>Basis</th></tr></thead><tbody>
       {% for name in ['safra','regime','portfolio','valuation','momentum','crowd','season'] %}{% set f = it.factors.get(name) or {} %}
-      <tr><td>{{ name }}</td><td class="mono">{{ '%.2f' % (f.value or 0) }}</td><td class="muted small">{{ f.inputs | tojson | truncate(220) }}</td></tr>{% endfor %}
+      <tr><td>{{ name }}</td><td class="mono">{{ '%.2f' % (f.value or 0) }}</td><td class="muted small">{% if name == 'valuation' and f.inputs.get('note') == 'no fundamentals' %}<strong class="red">no fundamentals</strong> — weekly job has not populated this name{% elif name == 'crowd' and f.inputs.get('basis') %}{{ f.inputs.basis }}{% elif name == 'portfolio' and f.inputs.get('why') %}{{ f.inputs.why }}; penalty {{ f.inputs.correlation_penalty }}{% else %}{{ f.inputs | tojson | truncate(220) }}{% endif %}</td></tr>{% endfor %}
     </tbody></table>
     <div class="cols">
       <div><h3>Gates</h3><ul class="small">
@@ -46,9 +49,16 @@
 {% endmacro %}
 
 <section>
-  <h2>Candidates <span class="muted">· {{ data.date }} · top {{ data.cfg.top_n }}</span></h2>
+  <h2>Candidates <span class="muted">· {{ data.date }} · top {{ data.cfg.top_n }}, gates passed, at most {{ data.cfg.max_per_sector }} per sector</span></h2>
+  <p class="muted small">Sectors: {% for s, n in data.sectors.items() %}{{ s }} {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
   {% for it in data.candidates %}{{ row(it) }}{% else %}<p class="muted">Nothing scored.</p>{% endfor %}
 </section>
+{% if data.overflow %}
+<section>
+  <h2>Overflow <span class="muted">· ranked above the last candidate but kept out of the list: gated out or over the sector cap</span></h2>
+  {% for it in data.overflow %}{{ row(it) }}{% endfor %}
+</section>
+{% endif %}
 <section>
   <h2>Avoid <span class="muted">· bottom {{ data.cfg.top_n }}, plus held names below 45</span></h2>
   {% for it in data.avoid %}{{ row(it) }}{% else %}<p class="muted">Nothing here.</p>{% endfor %}

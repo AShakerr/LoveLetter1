@@ -100,8 +100,12 @@ def test_dashboard_renders_tape(client):
     assert "fresh-stale" in body  # the placeholder manual series is > 14 days old
 
 
-def test_run_now_uses_job(client, monkeypatch):
+def test_run_now_uses_job(client, settings, monkeypatch):
     from desk.sources.base import Fetcher
+
+    monkeypatch.setattr(
+        settings, "offline", False
+    )  # the stub never touches the network; let it report ok
 
     class Stub(Fetcher):
         name = "stub"
@@ -112,7 +116,9 @@ def test_run_now_uses_job(client, monkeypatch):
         def parse(self, raw):
             return [Observation(series="DGS10", date=date.today(), value=4.5, source="stub")]
 
-    monkeypatch.setattr("desk.jobs.build_fetchers", lambda universe, settings: [Stub(settings)])
+    monkeypatch.setattr(
+        "desk.jobs.build_fetchers", lambda universe, settings, *a, **k: [Stub(settings)]
+    )
     r = client.post("/jobs/run", headers=_auth())
     assert r.status_code == 200 and "Run finished: 1 ok" in r.text
     tape = client.get("/api/tape", headers=_auth()).json()

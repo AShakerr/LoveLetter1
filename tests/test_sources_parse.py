@@ -90,9 +90,15 @@ def test_alphavantage_parse_aggregates_per_day(settings):
 def test_gdelt_parse_joins_tone_and_volume(settings):
     raw = load_fixture("gdelt.json")
     obs = GdeltFetcher(settings=settings).parse(raw)
-    horm = [o for o in obs if o.topic == "Strait of Hormuz"]
-    assert horm and all(o.meta["volume"] is not None for o in horm)
-    assert {o.topic for o in obs} == set(raw.keys())
+    queries = {
+        k for k, v in raw.items() if not k.startswith("_") and (v.get("tone") or {}).get("timeline")
+    }
+    assert queries and {o.topic for o in obs} == queries  # a query that 429'd out is simply absent
+    first = sorted(queries)[0]
+    rows = [o for o in obs if o.topic == first]
+    assert rows and all(
+        o.meta["volume"] is not None for o in rows
+    )  # tone joined with volume by day
 
 
 def test_fear_greed_parse(settings):

@@ -339,3 +339,68 @@ class ScreenerRow(SQLModel, table=True):
     total: float
     factors_json: dict | None = Field(default=None, sa_column=Column(JSON))
     gates_json: dict | None = Field(default=None, sa_column=Column(JSON))
+
+
+class DisclosedTrade(SQLModel, table=True):
+    """docs/BRIEF.md 8d: a publicly disclosed trade by a corporate insider (Form 4) or a member of Congress."""
+
+    __tablename__ = "disclosed_trades"
+    __table_args__ = (
+        UniqueConstraint(
+            "source",
+            "raw_url",
+            "filer_name",
+            "trade_date",
+            "transaction_code",
+            "quantity",
+            "price",
+            name="uq_disclosed_trade",
+        ),
+    )
+    id: int | None = Field(default=None, primary_key=True)
+    source: str = Field(index=True)  # form4 | house | senate
+    filer_name: str = Field(index=True)
+    filer_role: str | None = None  # officer title, director, 10% owner; House/Senate member
+    issuer_ticker: str = Field(index=True)
+    instrument_id: int | None = Field(default=None, foreign_key="instruments.id", index=True)
+    trade_date: dt.date = Field(index=True)
+    filed_date: dt.date = Field(index=True)
+    lag_days: int
+    side: str  # buy | sell
+    asset_type: str = "stock"  # stock | option | fund | other
+    transaction_code: str | None = None  # Form 4 code: P S A M F G J ...
+    quantity: float | None = None
+    amount_low: float | None = None
+    amount_high: float | None = None
+    price: float | None = None
+    is_open_market: bool = False
+    is_10b5_1: bool = False
+    is_routine: bool = False
+    committee_relevant: bool = False
+    raw_url: str
+    fetched_at: dt.datetime
+
+    @property
+    def value(self) -> float | None:
+        """Trade value: quantity x price for Form 4, the band midpoint for Congress."""
+        if self.quantity is not None and self.price is not None:
+            return self.quantity * self.price
+        if self.amount_low is not None and self.amount_high is not None:
+            return (self.amount_low + self.amount_high) / 2
+        return None
+
+
+class FlowSignal(SQLModel, table=True):
+    """docs/BRIEF.md 8d: the daily per-instrument signals computed from disclosed_trades."""
+
+    __tablename__ = "flow_signals"
+    __table_args__ = (UniqueConstraint("date", "instrument_id", "signal", name="uq_flow_signal"),)
+    id: int | None = Field(default=None, primary_key=True)
+    date: dt.date = Field(index=True)
+    instrument_id: int = Field(foreign_key="instruments.id", index=True)
+    signal: str = Field(
+        index=True
+    )  # insider_cluster_buy | insider_net_flow | congress_relevant_buy | congress_cluster | insider_sale_cluster
+    strength: float | None = None
+    scored: bool = True  # False for watch-only signals (congress_cluster, sales)
+    detail_json: dict | None = Field(default=None, sa_column=Column(JSON))

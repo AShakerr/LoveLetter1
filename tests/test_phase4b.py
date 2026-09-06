@@ -343,13 +343,13 @@ def test_fixture_loaders_for_screener(settings, tmp_path):
             {
                 "sp500": [
                     {
-                        "ticker": "AAPL",
-                        "name": "Apple",
+                        "ticker": "ZZTEST",
+                        "name": "ZZ Test Co",
                         "sector": "Information Technology",
                         "exchange": "NASDAQ",
                         "region": "USA",
                         "currency": "USD",
-                        "source_symbol": "AAPL",
+                        "source_symbol": "ZZTEST",
                     }
                 ],
                 "stoxx600": [],
@@ -360,7 +360,7 @@ def test_fixture_loaders_for_screener(settings, tmp_path):
     prices.write_text(
         json.dumps(
             {
-                "AAPL": [
+                "ZZTEST": [
                     {
                         "date": "2026-09-01",
                         "open": 200,
@@ -385,10 +385,10 @@ def test_fixture_loaders_for_screener(settings, tmp_path):
         sync_instruments(s)
         assert load_fixture_constituents(s, settings, cons)["rows"] == 1
         assert load_fixture_screener_prices(s, settings, prices)["rows"] == 2
-        aapl = _inst(s, "AAPL")
+        zz = _inst(s, "ZZTEST")
         assert (
-            aapl.screener_member == "sp500"
-            and len(s.exec(select(Price).where(Price.instrument_id == aapl.id)).all()) == 2
+            zz.screener_member == "sp500"
+            and len(s.exec(select(Price).where(Price.instrument_id == zz.id)).all()) == 2
         )
         assert (
             load_fixture_constituents(s, settings, tmp_path / "missing.json")["status"] == "missing"

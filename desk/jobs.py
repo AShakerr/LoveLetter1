@@ -19,6 +19,26 @@ from desk.universe import load_universe, sync_instruments
 log = logging.getLogger(__name__)
 
 
+def sentiment_budget_order(settings: Settings, universe: list[dict]) -> list[str]:
+    """Alpha Vantage tickers for today (brief 8c): held names first, then the screener's top 20; the universe's
+    news_sentiment flags are kept as a floor. Capped at the remaining daily budget less the topic calls."""
+    from desk.screener import sentiment_targets
+    from desk.sources.alphavantage import DEFAULT_TOPICS, CallBudget
+
+    flagged = [i["ticker"] for i in universe if i.get("news_sentiment")]
+    budget = CallBudget(
+        settings.cache_dir / "alphavantage.budget.json", settings.alphavantage_daily_budget
+    )
+    room = max(0, budget.remaining() - len(DEFAULT_TOPICS))
+    with session_scope(settings) as session:
+        ordered = sentiment_targets(session, settings)
+    out: list[str] = []
+    for t in ordered + flagged:
+        if t not in out:
+            out.append(t)
+    return out[:room]
+
+
 def run_daily(
     settings: Settings | None = None,
     fetchers: list[Fetcher] | None = None,
@@ -29,7 +49,8 @@ def run_daily(
     settings = settings or get_settings()
     init_db(settings)
     universe = load_universe(settings.config_dir / "universe.yaml")
-    fetchers = fetchers if fetchers is not None else build_fetchers(universe, settings)
+    if fetchers is None:
+        fetchers = build_fetchers(universe, settings, sentiment_budget_order(settings, universe))
     summary: list[dict] = []
     with session_scope(settings) as session:
         sync_instruments(session, universe)
@@ -54,6 +75,9 @@ def run_daily(
             )
             log.info("%s: %s (%d rows) %s", f.name, outcome.status, rows, outcome.error or "")
     if decide:
+        from desk.flow import run_flow_daily
+
+        summary.append(run_flow_daily(settings))
         summary.append(run_decisions(settings))
         summary.append(run_screener_daily(settings))
     return summary
